@@ -3,7 +3,7 @@ spring:
     name: jrap
   datasource:
     # The application connects as the restricted role subject to row-level security.
-    url: jdbc:postgresql://localhost:5432/jrap
+    url: jdbc:postgresql://localhost:5442/jrap   # docker-compose publishes 5442 (see compose file)
     username: jrap_app
     password: jrap_app
   flyway:
