@@ -1,0 +1,55 @@
+import { useTranslation } from 'react-i18next';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { clearSession, session } from './api';
+import { applyDirection } from './i18n';
+import AcceptInvitation from './pages/AcceptInvitation';
+import Dashboard from './pages/Dashboard';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import VerifyEmail from './pages/VerifyEmail';
+
+export default function App() {
+  const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
+  const authed = session().accessToken !== null;
+
+  const toggleLanguage = () => {
+    const next = i18n.language === 'ar' ? 'en' : 'ar';
+    i18n.changeLanguage(next);
+    applyDirection(next);
+  };
+
+  return (
+    <>
+      <header className="topbar">
+        <strong>
+          {t('appName')} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>{t('tagline')}</span>
+        </strong>
+        <nav style={{ display: 'flex', gap: '0.6rem' }}>
+          <button className="secondary" onClick={toggleLanguage}>
+            {t('language')}
+          </button>
+          {authed && (
+            <button
+              className="secondary"
+              onClick={() => {
+                clearSession();
+                navigate('/login');
+              }}
+            >
+              {t('logout')}
+            </button>
+          )}
+        </nav>
+      </header>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route path="/accept-invitation" element={<AcceptInvitation />} />
+        <Route path="/" element={authed ? <Dashboard /> : <Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
+  );
+}

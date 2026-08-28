@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: jrap
+  datasource:
+    # The application connects as the restricted role subject to row-level security.
+    url: jdbc:postgresql://localhost:5432/jrap
+    username: jrap_app
+    password: jrap_app
+  flyway:
+    # Migrations run as the schema owner (docker-compose superuser in dev; a dedicated
+    # migration role in production).
+    user: jrap
+    password: jrap
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate.jdbc.time_zone: UTC
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+jrap:
+  app:
+    # Frontend base URL used in verification/invitation links.
+    base-url: http://localhost:5173
+  security:
+    # Dev-only default — override JRAP_SECURITY_JWT_SECRET in every real environment.
+    jwt-secret: ZGV2LW9ubHktc2VjcmV0LWRldi1vbmx5LXNlY3JldC1kZXYtb25seS1zZWNyZXQ=
+    access-token-ttl: PT15M
+    cors-allowed-origins: http://localhost:5173
