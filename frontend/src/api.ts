@@ -114,6 +114,36 @@ export interface FindingDto {
   evidenceItemIds: string[];
 }
 
+export interface AuditDto {
+  id: string;
+  journalId: string;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETE' | 'FAILED' | 'CANCELLED';
+  stage: string;
+  pageCap: number;
+  pagesFetched: number;
+  pagesSkipped: number;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface SnapshotDto {
+  id: string;
+  url: string;
+  httpStatus: number;
+  contentType: string | null;
+  pageType: string;
+  fetchedAt: string;
+}
+
+export interface SkippedUrlDto {
+  url: string;
+  status: string;
+  reason: string | null;
+  at: string | null;
+}
+
 export const api = {
   register: (body: { organisationName: string; email: string; password: string; displayName: string }) =>
     request<{ organisationId: string }>('/api/v1/auth/register', { method: 'POST', body: JSON.stringify(body) }),
@@ -135,4 +165,11 @@ export const api = {
   listJournals: () => request<JournalDto[]>('/api/v1/journals'),
   journalDetail: (id: string) => request<JournalDetailDto>(`/api/v1/journals/${id}`),
   journalFindings: (id: string) => request<FindingDto[]>(`/api/v1/journals/${id}/findings`),
+  createAudit: (journalId: string) =>
+    request<AuditDto>(`/api/v1/journals/${journalId}/audits`, { method: 'POST' }),
+  listAudits: (journalId: string) => request<AuditDto[]>(`/api/v1/journals/${journalId}/audits`),
+  audit: (id: string) => request<AuditDto>(`/api/v1/audits/${id}`),
+  auditSnapshots: (id: string) => request<SnapshotDto[]>(`/api/v1/audits/${id}/snapshots`),
+  auditSkipped: (id: string) => request<SkippedUrlDto[]>(`/api/v1/audits/${id}/skipped`),
+  cancelAudit: (id: string) => request<void>(`/api/v1/audits/${id}/cancel`, { method: 'POST' }),
 };

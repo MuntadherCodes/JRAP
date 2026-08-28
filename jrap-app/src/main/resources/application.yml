@@ -40,6 +40,12 @@ jrap:
     per-host-min-interval-ms: 1000   # CON-2: <= 1 req/s/host, configurable down only
   quotas:
     max-journals-default: 10   # admin-set per org via org_quota during beta (FR-JRN-3)
+  crawl:
+    page-cap-default: 3000     # FR-CRWL-4 default cap per audit
+    max-depth: 10
+    poll-interval-ms: 5000
+  snapshots:
+    root-dir: ./data/snapshots # FileSystemSnapshotStore; S3/MinIO adapter in ops phase
   security:
     # Dev-only default — override JRAP_SECURITY_JWT_SECRET in every real environment.
     jwt-secret: ZGV2LW9ubHktc2VjcmV0LWRldi1vbmx5LXNlY3JldC1kZXYtb25seS1zZWNyZXQ=

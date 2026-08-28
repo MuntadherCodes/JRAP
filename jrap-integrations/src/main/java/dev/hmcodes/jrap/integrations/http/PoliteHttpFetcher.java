@@ -11,6 +11,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -41,6 +42,46 @@ public class PoliteHttpFetcher {
                 .build();
         this.userAgent = "JRAP/0.1 (Journal Readiness Audit Platform; mailto:" + contactEmail + ")";
         this.perHostMinIntervalMs = perHostMinIntervalMs;
+    }
+
+    /** Fetches a resource as raw bytes with selected response headers — used by the crawler. */
+    public FetchedResource getResource(String url, Map<String, String> headers) {
+        URI uri = URI.create(url);
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(60))
+                .header("User-Agent", userAgent)
+                .header("Accept", "*/*")
+                .GET();
+        headers.forEach(builder::header);
+        HttpRequest request = builder.build();
+
+        IOException lastFailure = null;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            awaitPolitenessSlot(uri.getHost());
+            try {
+                HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+                if ((response.statusCode() >= 500 || response.statusCode() == 429) && attempt < MAX_ATTEMPTS) {
+                    backoff(attempt);
+                    continue;
+                }
+                Map<String, String> kept = new java.util.LinkedHashMap<>();
+                for (String name : List.of("content-type", "etag", "last-modified", "content-language")) {
+                    response.headers().firstValue(name).ifPresent(value -> kept.put(name, value));
+                }
+                return new FetchedResource(response.statusCode(), response.body(), kept,
+                        response.uri().toString());
+            } catch (IOException e) {
+                lastFailure = e;
+                if (attempt < MAX_ATTEMPTS) {
+                    backoff(attempt);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new FetchException("Interrupted while fetching " + url, e);
+            }
+        }
+        log.warn("Fetch failed after {} attempts: {}", MAX_ATTEMPTS, url);
+        throw new FetchException("Failed to fetch " + url, lastFailure);
     }
 
     public FetchResult get(String url, Map<String, String> headers) {

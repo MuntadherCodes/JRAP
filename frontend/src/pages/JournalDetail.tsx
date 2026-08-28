@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
-import { api, FindingDto, JournalDetailDto } from '../api';
+import { api, AuditDto, FindingDto, JournalDetailDto } from '../api';
 
 const severityColor: Record<string, string> = {
   CRITICAL: '#b3261e',
@@ -16,12 +16,26 @@ export default function JournalDetail() {
   const { id } = useParams();
   const [detail, setDetail] = useState<JournalDetailDto | null>(null);
   const [findings, setFindings] = useState<FindingDto[]>([]);
+  const [audits, setAudits] = useState<AuditDto[]>([]);
+  const [auditError, setAuditError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
     api.journalDetail(id).then(setDetail).catch(() => setDetail(null));
     api.journalFindings(id).then(setFindings).catch(() => setFindings([]));
+    api.listAudits(id).then(setAudits).catch(() => setAudits([]));
   }, [id]);
+
+  const runAudit = async () => {
+    if (!id) return;
+    setAuditError(null);
+    try {
+      await api.createAudit(id);
+      setAudits(await api.listAudits(id));
+    } catch (e) {
+      setAuditError(e instanceof Error ? e.message : 'Failed');
+    }
+  };
 
   if (!detail) {
     return (
@@ -41,6 +55,35 @@ export default function JournalDetail() {
       <p style={{ color: 'var(--muted)' }}>
         {j.publisher} {j.country ? `· ${j.country}` : ''} {j.platform ? `· ${j.platform}` : ''}
       </p>
+      <h2>{t('audits')}</h2>
+      <button onClick={runAudit}>{t('runAudit')}</button>
+      {auditError && <p className="error">{auditError}</p>}
+      {audits.length > 0 && (
+        <table style={{ marginTop: '0.6rem' }}>
+          <thead>
+            <tr>
+              <th>{t('status')}</th>
+              <th>{t('stage')}</th>
+              <th>{t('pagesFetched')}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {audits.map((a) => (
+              <tr key={a.id}>
+                <td>{a.status}</td>
+                <td>{a.stage}</td>
+                <td>
+                  {a.pagesFetched}/{a.pageCap}
+                </td>
+                <td>
+                  <Link to={`/audits/${a.id}`}>→</Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
       <h2>{t('identityBySource')}</h2>
       <table>
         <thead>

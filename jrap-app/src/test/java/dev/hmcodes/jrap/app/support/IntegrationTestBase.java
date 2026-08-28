@@ -37,5 +37,9 @@ public abstract class IntegrationTestBase {
         registry.add("spring.flyway.url", () -> url);
         registry.add("spring.flyway.user", () -> "postgres");
         registry.add("spring.flyway.password", () -> "postgres");
+        // Idle the audit-runner scheduler in every cached context: tests that exercise the
+        // pipeline drive AuditRunner.runOnce() explicitly, and a 5-second poll from a
+        // sibling context would race them for PENDING/RUNNING audits in the shared DB.
+        registry.add("jrap.crawl.poll-interval-ms", () -> "3600000");
     }
 }

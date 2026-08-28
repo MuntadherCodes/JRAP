@@ -4,6 +4,7 @@ import { clearSession, session } from './api';
 import { applyDirection } from './i18n';
 import AcceptInvitation from './pages/AcceptInvitation';
 import Dashboard from './pages/Dashboard';
+import AuditView from './pages/AuditView';
 import JournalDetail from './pages/JournalDetail';
 import Journals from './pages/Journals';
 import Login from './pages/Login';
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="/accept-invitation" element={<AcceptInvitation />} />
         <Route path="/journals" element={authed ? <Journals /> : <Navigate to="/login" replace />} />
         <Route path="/journals/:id" element={authed ? <JournalDetail /> : <Navigate to="/login" replace />} />
+        <Route path="/audits/:id" element={authed ? <AuditView /> : <Navigate to="/login" replace />} />
         <Route path="/" element={authed ? <Dashboard /> : <Navigate to="/login" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
