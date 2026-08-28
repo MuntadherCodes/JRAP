@@ -73,6 +73,7 @@ public final class OjsSiteStub {
             case "/", "" -> html(exchange, """
                     <head><title>%s</title><meta name="generator" content="%s"></head>
                     <body><h1>%s</h1><p>ISSN: %s</p>
+                    <p>Indexed in Scopus and other databases.</p>
                     <a href="/about">About</a>
                     <a href="/about/editorialTeam">Editorial Team</a>
                     <a href="/ethics">Publication Ethics</a>
@@ -95,7 +96,10 @@ public final class OjsSiteStub {
                     </body>""");
             case "/about/submissions" -> html(exchange, "<head><title>Submissions</title></head><body>Author guidelines here</body>");
             case "/ethics" -> html(exchange, "<head><title>Publication Ethics</title></head><body>COPE-aligned malpractice statement</body>");
-            case "/announcement" -> html(exchange, "<head><title>Announcements</title></head><body>News</body>");
+            case "/announcement" -> html(exchange, """
+                    <head><title>Announcements</title></head><body>
+                    <p>Notice to authors: submissions must cite at least three papers previously
+                       published in this journal to be considered.</p></body>""");
             case "/issue/archive" -> html(exchange, """
                     <head><title>Archives</title></head><body>
                     <a href="/issue/view/1">Vol 1</a> <a href="/issue/view/2">Vol 2</a></body>""");
@@ -142,11 +146,21 @@ public final class OjsSiteStub {
     }
 
     private String openAlexJson() {
+        // Seeded anomalies: works 5->12 (spike) ->5 (collapse); citations 40->90 (surge)
+        // ->10->8 (collapse) => RF-01, RF-02 and a COLLAPSING trend with standing floored.
+        // Years are RELATIVE to the wall clock so the gap-year window (engine uses
+        // Clock.now) sees the same pattern whatever year CI runs in.
+        int y = java.time.Year.now().getValue();
         return """
                 {"id":"https://openalex.org/S42109","display_name":"%s","issn_l":"%s",
                  "issn":["%s"],"host_organization_name":"Stub University Press",
-                 "country_code":"IQ","homepage_url":"%s/","works_count":3,"cited_by_count":5}
-                """.formatted(TITLE, ISSN, ISSN, baseUrl());
+                 "country_code":"IQ","homepage_url":"%s/","works_count":25,"cited_by_count":148,
+                 "counts_by_year":[
+                   {"year":%d,"works_count":3,"cited_by_count":8},
+                   {"year":%d,"works_count":5,"cited_by_count":10},
+                   {"year":%d,"works_count":12,"cited_by_count":90},
+                   {"year":%d,"works_count":5,"cited_by_count":40}]}
+                """.formatted(TITLE, ISSN, ISSN, baseUrl(), y - 1, y - 2, y - 3, y - 4);
     }
 
     private String crossrefJson() {

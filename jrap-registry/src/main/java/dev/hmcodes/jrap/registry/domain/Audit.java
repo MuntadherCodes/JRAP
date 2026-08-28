@@ -139,6 +139,12 @@ public class Audit implements Persistable<UUID> {
     }
 
     public void setStage(Stage stage) { this.stage = stage; }
+
+    /** §3.3: an audit freezes the rubric and detector versions it used. */
+    public void freezeVersions(String rubricVersion, String detectorVersionsJson) {
+        this.rubricVersion = rubricVersion;
+        this.detectorVersions = detectorVersionsJson == null ? "{}" : detectorVersionsJson;
+    }
     public void setPagesFetched(int pagesFetched) { this.pagesFetched = pagesFetched; }
     public void setPagesSkipped(int pagesSkipped) { this.pagesSkipped = pagesSkipped; }
     public void setArticlesExtracted(int articlesExtracted) { this.articlesExtracted = articlesExtracted; }

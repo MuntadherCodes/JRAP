@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
-import { api, AuditDto, BoardMemberDto, ExtractedArticleDto, SkippedUrlDto, SnapshotDto } from '../api';
+import { AnalysisDto, api, AuditDto, AuditFindingDto, BoardMemberDto, ExtractedArticleDto, SkippedUrlDto, SnapshotDto } from '../api';
 
 const ACTIVE = ['PENDING', 'RUNNING'];
+
+const outcomeColor: Record<string, string> = {
+  PASS: '#1b7f4d',
+  PASS_WITH_CAVEATS: '#a06a00',
+  FAIL: '#b3261e',
+  UNCLEAR: '#6a6f85',
+};
+
 
 export default function AuditView() {
   const { t } = useTranslation();
@@ -13,6 +21,8 @@ export default function AuditView() {
   const [skipped, setSkipped] = useState<SkippedUrlDto[]>([]);
   const [board, setBoard] = useState<BoardMemberDto[]>([]);
   const [articles, setArticles] = useState<ExtractedArticleDto[]>([]);
+  const [analysis, setAnalysis] = useState<AnalysisDto | null>(null);
+  const [auditFindings, setAuditFindings] = useState<AuditFindingDto[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -26,6 +36,8 @@ export default function AuditView() {
           setSkipped(await api.auditSkipped(id));
           setBoard(await api.auditBoard(id).catch(() => []));
           setArticles(await api.auditArticles(id).catch(() => []));
+          setAnalysis(await api.auditAnalysis(id).catch(() => null));
+          setAuditFindings(await api.auditFindings(id).catch(() => []));
           return; // terminal — stop polling
         }
       } catch {
@@ -70,6 +82,76 @@ export default function AuditView() {
       )}
       {!ACTIVE.includes(audit.status) && (
         <>
+          {analysis && analysis.gateway.length > 0 && (
+            <>
+              <h2>{t('gatewayChecks')}</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>{t('outcome')}</th>
+                    <th>{t('summary')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {analysis.gateway.map((g) => (
+                    <tr key={g.code}>
+                      <td>{g.code}</td>
+                      <td style={{ color: outcomeColor[g.outcome], fontWeight: 600 }}>{g.outcome}</td>
+                      <td>{g.summary}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <h2>
+                {t('csabScores')} {analysis.rubricVersion && `(rubric v${analysis.rubricVersion})`}
+              </h2>
+              <table>
+                <tbody>
+                  {analysis.scores.map((s) => (
+                    <tr key={s.category}>
+                      <td style={{ width: '12rem' }}>{s.category}</td>
+                      <td>
+                        <strong>{s.score}</strong> / 5
+                      </td>
+                      <td style={{ width: '60%' }}>
+                        <div style={{ background: '#ececf2', borderRadius: 4, height: 10 }}>
+                          <div
+                            style={{
+                              width: `${(s.score / 5) * 100}%`,
+                              background: s.score >= 4 ? '#1b7f4d' : s.score >= 2 ? '#a06a00' : '#b3261e',
+                              height: 10,
+                              borderRadius: 4,
+                            }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+          {auditFindings.length > 0 && (
+            <>
+              <h2>
+                {t('redFlags')} ({auditFindings.length})
+              </h2>
+              {auditFindings.map((f) => (
+                <div key={f.id} className="card" style={{ maxWidth: 'none', marginBottom: '0.8rem', padding: '1rem' }}>
+                  <strong>
+                    [{f.severity}] {f.code} — {f.title}
+                  </strong>
+                  {f.status === 'NEEDS_VERIFICATION' && (
+                    <span style={{ color: '#a06a00', marginInlineStart: '0.5rem' }}>
+                      ({t('needsVerification')})
+                    </span>
+                  )}
+                  <p style={{ margin: '0.4rem 0 0' }}>{f.description}</p>
+                </div>
+              ))}
+            </>
+          )}
           {board.length > 0 && (
             <>
               <h2>

@@ -188,6 +188,43 @@ export interface ExtractedArticleDto {
   authors: ExtractedAuthorDto[];
 }
 
+export interface GatewayDto {
+  code: string;
+  outcome: 'PASS' | 'PASS_WITH_CAVEATS' | 'FAIL' | 'UNCLEAR';
+  summary: string;
+}
+
+export interface ScoreDto {
+  category: string;
+  score: number;
+  criteria: string;
+}
+
+export interface MetricDto {
+  name: string;
+  value: number | null;
+  detail: string;
+}
+
+export interface AnalysisDto {
+  rubricVersion: string | null;
+  gateway: GatewayDto[];
+  scores: ScoreDto[];
+  metrics: MetricDto[];
+}
+
+export interface AuditFindingDto {
+  id: string;
+  category: string;
+  code: string;
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO';
+  status: string;
+  title: string;
+  description: string;
+  detectorVersion: string;
+  createdAt: string;
+}
+
 export const api = {
   register: (body: { organisationName: string; email: string; password: string; displayName: string }) =>
     request<{ organisationId: string }>('/api/v1/auth/register', { method: 'POST', body: JSON.stringify(body) }),
@@ -220,4 +257,6 @@ export const api = {
     request<ExtractionSummaryDto>(`/api/v1/audits/${id}/extraction-summary`),
   auditBoard: (id: string) => request<BoardMemberDto[]>(`/api/v1/audits/${id}/board`),
   auditArticles: (id: string) => request<ExtractedArticleDto[]>(`/api/v1/audits/${id}/articles`),
+  auditAnalysis: (id: string) => request<AnalysisDto>(`/api/v1/audits/${id}/analysis`),
+  auditFindings: (id: string) => request<AuditFindingDto[]>(`/api/v1/audits/${id}/findings`),
 };

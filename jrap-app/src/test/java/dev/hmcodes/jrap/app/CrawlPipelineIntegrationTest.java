@@ -232,7 +232,7 @@ class CrawlPipelineIntegrationTest extends IntegrationTestBase {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.articlesExtracted").value(3))
                 .andExpect(jsonPath("$.boardMembersExtracted").value(5))
-                .andExpect(jsonPath("$.stage").value("ENRICH"));
+                .andExpect(jsonPath("$.stage").value("ANALYSE"));
 
         JsonNode board = getJson("/api/v1/audits/" + auditId + "/board");
         assertThat(board.findValuesAsText("name")).contains("Prof. Ali Hassan", "Dr. John Smith");
@@ -289,6 +289,58 @@ class CrawlPipelineIntegrationTest extends IntegrationTestBase {
                 assertThat(rs.getLong(1)).isZero();
             }
         }
+    }
+
+    @Test
+    @Order(10)
+    void analysisProducesGatewayOutcomesAndScores() throws Exception {
+        // FR-ANL-1/5: deterministic gateway outcomes and rubric-v1.0 scores on the
+        // seeded stub data — walked by hand, asserted exactly.
+        JsonNode analysis = getJson("/api/v1/audits/" + auditId + "/analysis");
+        assertThat(analysis.get("rubricVersion").asText()).isEqualTo("1.0");
+        java.util.Map<String, String> gateway = new java.util.HashMap<>();
+        for (JsonNode check : analysis.get("gateway")) {
+            gateway.put(check.get("code").asText(), check.get("outcome").asText());
+        }
+        assertThat(gateway.get("G1")).isEqualTo("FAIL");               // no peer-review page
+        assertThat(gateway.get("G2")).isEqualTo("PASS_WITH_CAVEATS");  // thin issues
+        assertThat(gateway.get("G3")).isEqualTo("PASS_WITH_CAVEATS");  // portal blocked
+        assertThat(gateway.get("G4")).isEqualTo("PASS");
+        assertThat(gateway.get("G5")).isEqualTo("PASS");               // ethics page exists
+        assertThat(gateway.get("G6")).isEqualTo("PASS");
+
+        java.util.Map<String, Integer> scores = new java.util.HashMap<>();
+        for (JsonNode score : analysis.get("scores")) {
+            scores.put(score.get("category").asText(), score.get("score").asInt());
+        }
+        assertThat(scores.get("policy")).isEqualTo(2);       // -2 review policy, -1 solicitation
+        assertThat(scores.get("content")).isEqualTo(5);
+        assertThat(scores.get("standing")).isEqualTo(1);     // floored by citation collapse
+        assertThat(scores.get("regularity")).isEqualTo(3);   // -1 thin issues, -1 volume anomaly
+        assertThat(scores.get("availability")).isEqualTo(3); // -1 pdf share, -1 preservation
+    }
+
+    @Test
+    @Order(11)
+    void redFlagDetectorsFireOnSeededAnomalies() throws Exception {
+        JsonNode auditFindings = getJson("/api/v1/audits/" + auditId + "/findings");
+        java.util.Map<String, String> statusByCode = new java.util.HashMap<>();
+        for (JsonNode finding : auditFindings) {
+            statusByCode.put(finding.get("code").asText(), finding.get("status").asText());
+        }
+        assertThat(statusByCode.keySet()).contains(
+                "RF-01",  // volume spike/collapse
+                "RF-02",  // citation surge-then-collapse
+                "RF-03",  // reference-based self-citation
+                "RF-04",  // board members author in own journal
+                "RF-07",  // UNCLEAR: web search disabled
+                "RF-10",  // "Indexed in Scopus" claim
+                "RF-11"); // citation solicitation announcement
+        // CON-6: misconduct-class results are indicators requiring verification.
+        assertThat(statusByCode.get("RF-10")).isEqualTo("NEEDS_VERIFICATION");
+        assertThat(statusByCode.get("RF-11")).isEqualTo("NEEDS_VERIFICATION");
+        assertThat(statusByCode.get("RF-02")).isEqualTo("AUTO");
+        assertThat(statusByCode.keySet()).doesNotContain("RF-05", "RF-06", "RF-13");
     }
 
     @Test

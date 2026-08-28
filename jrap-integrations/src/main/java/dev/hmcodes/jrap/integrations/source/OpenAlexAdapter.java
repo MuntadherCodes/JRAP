@@ -45,6 +45,42 @@ public class OpenAlexAdapter {
                 .orElseGet(() -> SourceResult.unavailable(null, null));
     }
 
+    /** Canonical author candidate for misattribution screening (FR-ANL-8). */
+    public record AuthorRecord(String displayName, String institution, long worksCount) {}
+
+    public SourceResult<AuthorRecord> searchAuthor(String name) {
+        String encoded = java.net.URLEncoder.encode(name, java.nio.charset.StandardCharsets.UTF_8);
+        String key = "authors:search:" + name.toLowerCase(java.util.Locale.ROOT);
+        String url = baseUrl + "/authors?search=" + encoded + "&per-page=1&mailto=" + contactEmail;
+        return apiRecords.getOrFetch(SOURCE, key, url, Map.of())
+                .map(this::toAuthorResult)
+                .orElseGet(() -> SourceResult.unavailable(null, null));
+    }
+
+    private SourceResult<AuthorRecord> toAuthorResult(RecordedResponse response) {
+        if (response.statusCode() != 200) {
+            return SourceResult.unavailable(response.apiRecordId(), response.retrievedAt());
+        }
+        try {
+            JsonNode results = objectMapper.readTree(response.body()).path("results");
+            if (!results.isArray() || results.isEmpty()) {
+                return SourceResult.notFound(response.apiRecordId(), response.retrievedAt(),
+                        response.fromCache());
+            }
+            JsonNode hit = results.get(0);
+            String institution = null;
+            JsonNode institutions = hit.path("last_known_institutions");
+            if (institutions.isArray() && !institutions.isEmpty()) {
+                institution = textOrNull(institutions.get(0), "display_name");
+            }
+            return SourceResult.ok(new AuthorRecord(textOrNull(hit, "display_name"), institution,
+                            hit.path("works_count").asLong()),
+                    response.apiRecordId(), response.retrievedAt(), response.fromCache());
+        } catch (Exception e) {
+            return SourceResult.unavailable(response.apiRecordId(), response.retrievedAt());
+        }
+    }
+
     /** Minimal per-DOI work record for reconciliation (FR-EXT-5). */
     public record WorkRecord(String title, int authorCount, Integer publishedYear) {}
 

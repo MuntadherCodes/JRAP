@@ -59,6 +59,12 @@ jrap:
   extract:
     confidence-threshold: 0.8  # FR-EXT-4: below this, rows enter the human review queue
     reconciliation-sample: 25  # FR-EXT-5: articles sampled per audit for DOI reconciliation
+  analysis:
+    rubric-version: "1.0"      # §5.2: versioned rubric config; audits freeze the version used
+    misattribution-sample: 10  # FR-ANL-8 sole-authored articles sampled per audit
+    copied-text-sample: 10     # FR-ANL-9 abstracts sampled per audit
+  search:
+    provider: disabled         # FR-INT-5 pluggable web-search adapter (disabled => UNCLEAR)
   security:
     # Dev-only default — override JRAP_SECURITY_JWT_SECRET in every real environment.
     jwt-secret: ZGV2LW9ubHktc2VjcmV0LWRldi1vbmx5LXNlY3JldC1kZXYtb25seS1zZWNyZXQ=

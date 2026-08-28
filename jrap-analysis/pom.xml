@@ -9,12 +9,50 @@
     <version>0.1.0-SNAPSHOT</version>
   </parent>
   <artifactId>jrap-analysis</artifactId>
-  <name>JRAP analysis-engine: deterministic gateway checks, CSAB scoring, red flags (Phase 5: FR-ANL-1..12)</name>
+  <name>JRAP analysis-engine: gateway checks, CSAB scoring, red flags (FR-ANL-1..12, §5)</name>
   <dependencies>
     <dependency>
       <groupId>dev.hmcodes.jrap</groupId>
       <artifactId>jrap-common</artifactId>
       <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>dev.hmcodes.jrap</groupId>
+      <artifactId>jrap-registry</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>dev.hmcodes.jrap</groupId>
+      <artifactId>jrap-crawl</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>dev.hmcodes.jrap</groupId>
+      <artifactId>jrap-extract</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>dev.hmcodes.jrap</groupId>
+      <artifactId>jrap-integrations</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 </project>
