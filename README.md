@@ -27,13 +27,13 @@ ship last; Phase 9 is a beta release without billing.
 ```bash
 docker compose up -d              # PostgreSQL 16, Redis 7, RabbitMQ, MinIO
 mvn install -DskipTests           # after every pull: rebuild sibling modules
-mvn -pl jrap-app spring-boot:run  # backend on :8080
+mvn -pl jrap-app spring-boot:run  # backend on :8090
 cd frontend && npm install && npm run dev
 ```
 
 JRAP's containers publish on distinctive host ports so they never collide with a
-locally installed PostgreSQL or other projects: Postgres **5442**, Redis 6389,
-RabbitMQ 5682/15682, MinIO 9010/9011.
+locally installed PostgreSQL or other projects: backend **8090**, Postgres **5442**,
+Redis 6389, RabbitMQ 5682/15682, MinIO 9010/9011.
 
 ## Test
 
