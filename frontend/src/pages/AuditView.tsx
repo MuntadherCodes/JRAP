@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
-import { api, AuditDto, SkippedUrlDto, SnapshotDto } from '../api';
+import { api, AuditDto, BoardMemberDto, ExtractedArticleDto, SkippedUrlDto, SnapshotDto } from '../api';
 
 const ACTIVE = ['PENDING', 'RUNNING'];
 
@@ -11,6 +11,8 @@ export default function AuditView() {
   const [audit, setAudit] = useState<AuditDto | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotDto[]>([]);
   const [skipped, setSkipped] = useState<SkippedUrlDto[]>([]);
+  const [board, setBoard] = useState<BoardMemberDto[]>([]);
+  const [articles, setArticles] = useState<ExtractedArticleDto[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -22,6 +24,8 @@ export default function AuditView() {
         if (!ACTIVE.includes(current.status)) {
           setSnapshots(await api.auditSnapshots(id));
           setSkipped(await api.auditSkipped(id));
+          setBoard(await api.auditBoard(id).catch(() => []));
+          setArticles(await api.auditArticles(id).catch(() => []));
           return; // terminal — stop polling
         }
       } catch {
@@ -66,6 +70,68 @@ export default function AuditView() {
       )}
       {!ACTIVE.includes(audit.status) && (
         <>
+          {board.length > 0 && (
+            <>
+              <h2>
+                {t('editorialBoard')} ({board.length})
+              </h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>{t('name')}</th>
+                    <th>{t('role')}</th>
+                    <th>{t('institution')}</th>
+                    <th>{t('country')}</th>
+                    <th>{t('confidence')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {board.map((m) => (
+                    <tr key={m.id}>
+                      <td>
+                        {m.name} {m.needsReview && <span title="needs review">⚠</span>}
+                      </td>
+                      <td>{m.role}</td>
+                      <td>{m.institution}</td>
+                      <td>{m.country}</td>
+                      <td>{m.confidence}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+          {articles.length > 0 && (
+            <>
+              <h2>
+                {t('articles')} ({articles.length})
+              </h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>{t('journalTitle')}</th>
+                    <th>{t('authors')}</th>
+                    <th>DOI</th>
+                    <th>{t('published')}</th>
+                    <th>{t('refs')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {articles.slice(0, 100).map((a) => (
+                    <tr key={a.id}>
+                      <td>
+                        {a.title ?? '—'} {a.needsReview && <span title="needs review">⚠</span>}
+                      </td>
+                      <td>{a.authors.map((au) => au.name).join('; ')}</td>
+                      <td style={{ wordBreak: 'break-all' }}>{a.doi}</td>
+                      <td>{a.datePublished}</td>
+                      <td>{a.referencesCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
           <h2>{t('pageInventory')}</h2>
           <table>
             <thead>

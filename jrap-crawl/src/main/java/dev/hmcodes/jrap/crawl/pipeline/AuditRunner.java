@@ -1,19 +1,10 @@
 package dev.hmcodes.jrap.crawl.pipeline;
 
 import dev.hmcodes.jrap.common.tenant.TenantContext;
-import dev.hmcodes.jrap.crawl.repo.OaiHarvestRepository;
-import dev.hmcodes.jrap.crawl.repo.SnapshotRepository;
-import dev.hmcodes.jrap.crawl.service.CrawlService;
-import dev.hmcodes.jrap.crawl.service.OaiHarvester;
 import dev.hmcodes.jrap.registry.domain.Audit;
-import dev.hmcodes.jrap.registry.domain.EvidenceItem;
-import dev.hmcodes.jrap.registry.domain.EvidenceLink;
-import dev.hmcodes.jrap.registry.domain.Finding;
 import dev.hmcodes.jrap.registry.domain.Journal;
+import dev.hmcodes.jrap.registry.pipeline.AuditStageHandler;
 import dev.hmcodes.jrap.registry.repo.AuditRepository;
-import dev.hmcodes.jrap.registry.repo.EvidenceItemRepository;
-import dev.hmcodes.jrap.registry.repo.EvidenceLinkRepository;
-import dev.hmcodes.jrap.registry.repo.FindingRepository;
 import dev.hmcodes.jrap.registry.repo.JournalRepository;
 import dev.hmcodes.jrap.tenancy.service.TenantTx;
 import org.slf4j.Logger;
@@ -22,50 +13,38 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
-import java.time.Instant;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
  * Single-threaded pipeline worker for the beta deployment: claims the oldest PENDING
- * audit (or resumes a RUNNING one after a restart — NFR-AVL-1) and drives its stages.
- * The claim is race-free within one instance ({@code synchronized} + one scheduler
- * thread); multi-instance claiming (SKIP LOCKED / a queue broker) is a Phase-9
- * scalability concern (NFR-SCAL-1) behind this same entry point.
+ * audit (or resumes a RUNNING one after a restart — NFR-AVL-1) and drives the
+ * registered {@link AuditStageHandler}s in stage order, checkpointing the audit's
+ * stage between them. Multi-instance claiming (SKIP LOCKED / a broker) is a Phase-9
+ * scalability concern behind this same entry point (NFR-SCAL-1).
  */
 @Component
 public class AuditRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AuditRunner.class);
-    public static final String CRAWL_DETECTOR_VERSION = "crawl/1.0.0";
 
     private record Claim(UUID auditId, UUID orgId, UUID journalId) {}
 
     private final AuditRepository audits;
     private final JournalRepository journals;
-    private final SnapshotRepository snapshots;
-    private final OaiHarvestRepository oaiRecords;
-    private final FindingRepository findings;
-    private final EvidenceItemRepository evidenceItems;
-    private final EvidenceLinkRepository evidenceLinks;
-    private final CrawlService crawlService;
-    private final OaiHarvester oaiHarvester;
+    private final Map<Audit.Stage, AuditStageHandler> handlers = new EnumMap<>(Audit.Stage.class);
     private final TenantTx tenantTx;
     private final Clock clock;
 
-    public AuditRunner(AuditRepository audits, JournalRepository journals, SnapshotRepository snapshots,
-                       OaiHarvestRepository oaiRecords, FindingRepository findings,
-                       EvidenceItemRepository evidenceItems, EvidenceLinkRepository evidenceLinks,
-                       CrawlService crawlService, OaiHarvester oaiHarvester,
-                       TenantTx tenantTx, Clock clock) {
+    public AuditRunner(AuditRepository audits, JournalRepository journals,
+                       List<AuditStageHandler> stageHandlers, TenantTx tenantTx, Clock clock) {
         this.audits = audits;
         this.journals = journals;
-        this.snapshots = snapshots;
-        this.oaiRecords = oaiRecords;
-        this.findings = findings;
-        this.evidenceItems = evidenceItems;
-        this.evidenceLinks = evidenceLinks;
-        this.crawlService = crawlService;
-        this.oaiHarvester = oaiHarvester;
+        for (AuditStageHandler handler : stageHandlers) {
+            this.handlers.put(handler.stage(), handler);
+        }
         this.tenantTx = tenantTx;
         this.clock = clock;
     }
@@ -94,9 +73,8 @@ public class AuditRunner {
         }
         TenantContext.setOrganisation(claim.orgId());
         try {
-            Audit audit = audits.findById(claim.auditId()).orElseThrow();
             Journal journal = journals.findById(claim.journalId()).orElseThrow();
-            runCrawlStage(audit, journal);
+            runStages(claim.auditId(), journal);
             return true;
         } catch (Exception e) {
             log.error("Audit {} failed", claim.auditId(), e);
@@ -108,60 +86,49 @@ public class AuditRunner {
         }
     }
 
-    private void runCrawlStage(Audit audit, Journal journal) {
-        CrawlService.CrawlOutcome outcome = crawlService.run(audit, journal);
-        if (!outcome.completed()) {
-            return; // cancelled — status already set
-        }
-        String baseUrl = journal.getHomepageUrl() != null ? journal.getHomepageUrl()
-                : journal.getRegisteredInput();
-        long oaiCount = oaiHarvester.harvest(audit, baseUrl);
-        long articleCount = snapshots.countByAuditIdAndPageType(audit.getId(), "article-landing");
-        maybeRecordOaiMismatch(audit, oaiCount, articleCount);
+    private void runStages(UUID auditId, Journal journal) {
+        while (true) {
+            Audit audit = audits.findById(auditId).orElseThrow();
+            if (audit.getStatus() != Audit.Status.RUNNING) {
+                return; // cancelled or already terminal
+            }
+            AuditStageHandler handler = handlers.get(audit.getStage());
+            if (handler == null) {
+                complete(auditId);
+                return;
+            }
+            handler.run(audit, journal);
 
-        tenantTx.asSystem(() -> audits.findById(audit.getId()).ifPresent(a -> {
+            Audit after = audits.findById(auditId).orElseThrow();
+            if (after.getStatus() != Audit.Status.RUNNING) {
+                return; // handler observed a cancellation
+            }
+            Audit.Stage next = nextHandledStage(after.getStage());
+            if (next == null) {
+                complete(auditId);
+                return;
+            }
+            tenantTx.asSystem(() -> audits.findById(auditId).ifPresent(a -> a.setStage(next)));
+        }
+    }
+
+    private Audit.Stage nextHandledStage(Audit.Stage current) {
+        Audit.Stage[] stages = Audit.Stage.values();
+        for (int i = current.ordinal() + 1; i < stages.length; i++) {
+            if (handlers.containsKey(stages[i])) {
+                return stages[i];
+            }
+        }
+        return null;
+    }
+
+    private void complete(UUID auditId) {
+        tenantTx.asSystem(() -> audits.findById(auditId).ifPresent(a -> {
             if (a.getStatus() == Audit.Status.RUNNING) {
                 a.markComplete(clock.instant());
             }
         }));
-        log.info("Audit {} crawl complete: {} pages fetched, {} skipped, {} OAI records",
-                audit.getId(), outcome.fetched(), outcome.skipped(), oaiCount);
-    }
-
-    /**
-     * FR-CRWL-2 cross-check: when OAI-PMH reports substantially more articles than the
-     * HTML crawl found (or vice versa), record a crawl-coverage finding with COMPUTED
-     * evidence so the gap is visible, never silent (CON-2 spirit).
-     */
-    private void maybeRecordOaiMismatch(Audit audit, long oaiCount, long articleCount) {
-        if (oaiCount == 0) {
-            return; // no OAI endpoint — nothing to cross-check
-        }
-        long difference = Math.abs(oaiCount - articleCount);
-        long tolerance = Math.max(5, Math.round(oaiCount * 0.2));
-        if (difference <= tolerance) {
-            return;
-        }
-        if (findings.existsByJournalIdAndCode(audit.getJournalId(), "CRAWL_OAI_HTML_MISMATCH")) {
-            return; // already recorded for this journal; re-runs must not duplicate it
-        }
-        Instant now = clock.instant();
-        EvidenceItem evidence = new EvidenceItem(UUID.randomUUID(), audit.getOrganisationId(),
-                audit.getJournalId(), EvidenceItem.Type.COMPUTED, null, "CRAWL",
-                "OAI-PMH ListRecords returned " + oaiCount + " records; the HTML crawl found "
-                        + articleCount + " article landing pages (audit " + audit.getId() + ")",
-                now, now);
-        Finding finding = new Finding(UUID.randomUUID(), audit.getOrganisationId(),
-                audit.getJournalId(), "crawl", "CRAWL_OAI_HTML_MISMATCH", Finding.Severity.LOW,
-                Finding.Status.AUTO,
-                "OAI-PMH and HTML article counts diverge",
-                "The journal's OAI-PMH endpoint lists " + oaiCount + " records but the site crawl "
-                        + "found " + articleCount + " article landing pages. Coverage of one of the "
-                        + "two views is incomplete (crawl cap, unlinked articles, or stale OAI).",
-                CRAWL_DETECTOR_VERSION, now);
-        evidenceItems.save(evidence);
-        findings.save(finding);
-        evidenceLinks.save(new EvidenceLink(finding.getId(), evidence.getId(), audit.getOrganisationId()));
+        log.info("Audit {} complete", auditId);
     }
 
     private static String truncate(String message) {

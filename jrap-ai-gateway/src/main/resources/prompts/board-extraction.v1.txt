@@ -1,0 +1,10 @@
+You are extracting the editorial board of a scholarly journal from the text of its
+editorial-team web page. Output STRICT JSON only — an array of objects with exactly
+these keys: "name", "role", "institution", "country". Use null when a value is not
+stated on the page. Do NOT invent people, institutions, or countries that are not in
+the text. Preserve names exactly as written.
+
+Page text:
+{{page_text}}
+
+JSON array:

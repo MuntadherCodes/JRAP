@@ -43,11 +43,13 @@ public class AuditController {
     }
 
     public record AuditDto(UUID id, UUID journalId, Audit.Status status, Audit.Stage stage,
-                           int pageCap, int pagesFetched, int pagesSkipped, String error,
+                           int pageCap, int pagesFetched, int pagesSkipped,
+                           int articlesExtracted, int boardMembersExtracted, String error,
                            Instant createdAt, Instant startedAt, Instant finishedAt) {
         static AuditDto from(Audit a) {
             return new AuditDto(a.getId(), a.getJournalId(), a.getStatus(), a.getStage(),
-                    a.getPageCap(), a.getPagesFetched(), a.getPagesSkipped(), a.getError(),
+                    a.getPageCap(), a.getPagesFetched(), a.getPagesSkipped(),
+                    a.getArticlesExtracted(), a.getBoardMembersExtracted(), a.getError(),
                     a.getCreatedAt(), a.getStartedAt(), a.getFinishedAt());
         }
     }

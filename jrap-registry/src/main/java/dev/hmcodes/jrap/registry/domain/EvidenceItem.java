@@ -41,6 +41,9 @@ public class EvidenceItem implements Persistable<UUID> {
     @Column(name = "api_record_id")
     private UUID apiRecordId;
 
+    @Column(name = "snapshot_id")
+    private UUID snapshotId;
+
     @Column(nullable = false)
     private String source;
 
@@ -72,6 +75,8 @@ public class EvidenceItem implements Persistable<UUID> {
     public UUID getJournalId() { return journalId; }
     public Type getType() { return type; }
     public UUID getApiRecordId() { return apiRecordId; }
+    public UUID getSnapshotId() { return snapshotId; }
+    public void setSnapshotId(UUID snapshotId) { this.snapshotId = snapshotId; }
     public String getSource() { return source; }
     public String getExcerpt() { return excerpt; }
     public Instant getRetrievedAt() { return retrievedAt; }

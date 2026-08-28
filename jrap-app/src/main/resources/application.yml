@@ -49,6 +49,16 @@ jrap:
     poll-interval-ms: 5000
   snapshots:
     root-dir: ./data/snapshots # FileSystemSnapshotStore; S3/MinIO adapter in ops phase
+  ai:
+    provider: disabled         # disabled | anthropic (CON-4: switching is config, not code)
+    base-url: https://api.anthropic.com
+    api-key: ${JRAP_AI_API_KEY:}
+    model: claude-3-5-haiku-latest
+    audit-token-budget: 200000 # FR-BILL-2 mechanism: per-audit LLM budget
+    prompt-versions: ""        # e.g. "board-extraction=v2" to pin a non-default version
+  extract:
+    confidence-threshold: 0.8  # FR-EXT-4: below this, rows enter the human review queue
+    reconciliation-sample: 25  # FR-EXT-5: articles sampled per audit for DOI reconciliation
   security:
     # Dev-only default — override JRAP_SECURITY_JWT_SECRET in every real environment.
     jwt-secret: ZGV2LW9ubHktc2VjcmV0LWRldi1vbmx5LXNlY3JldC1kZXYtb25seS1zZWNyZXQ=

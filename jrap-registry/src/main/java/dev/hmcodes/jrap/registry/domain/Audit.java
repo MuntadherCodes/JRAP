@@ -57,6 +57,12 @@ public class Audit implements Persistable<UUID> {
     @Column(name = "pages_skipped", nullable = false)
     private int pagesSkipped;
 
+    @Column(name = "articles_extracted", nullable = false)
+    private int articlesExtracted;
+
+    @Column(name = "board_members_extracted", nullable = false)
+    private int boardMembersExtracted;
+
     private String error;
 
     @Column(name = "created_by")
@@ -99,6 +105,8 @@ public class Audit implements Persistable<UUID> {
     public int getPageCap() { return pageCap; }
     public int getPagesFetched() { return pagesFetched; }
     public int getPagesSkipped() { return pagesSkipped; }
+    public int getArticlesExtracted() { return articlesExtracted; }
+    public int getBoardMembersExtracted() { return boardMembersExtracted; }
     public String getError() { return error; }
     public UUID getCreatedBy() { return createdBy; }
     public Instant getCreatedAt() { return createdAt; }
@@ -133,6 +141,8 @@ public class Audit implements Persistable<UUID> {
     public void setStage(Stage stage) { this.stage = stage; }
     public void setPagesFetched(int pagesFetched) { this.pagesFetched = pagesFetched; }
     public void setPagesSkipped(int pagesSkipped) { this.pagesSkipped = pagesSkipped; }
+    public void setArticlesExtracted(int articlesExtracted) { this.articlesExtracted = articlesExtracted; }
+    public void setBoardMembersExtracted(int boardMembersExtracted) { this.boardMembersExtracted = boardMembersExtracted; }
 
     @Transient
     private boolean isNew = true;

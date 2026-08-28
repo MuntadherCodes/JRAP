@@ -1,0 +1,12 @@
+You are extracting bibliographic metadata of one scholarly article from the text of its
+landing page. Output STRICT JSON only — one object with exactly these keys:
+"title", "doi", "pages", "date_submitted", "date_accepted", "date_published",
+"abstract", "keywords" (array of strings),
+"authors" (array of objects with keys "name", "affiliation", "country").
+Use null for anything not stated on the page. Do NOT invent values. Preserve names and
+dates exactly as written.
+
+Page text:
+{{page_text}}
+
+JSON object:

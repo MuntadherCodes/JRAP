@@ -44,6 +44,50 @@ public class CrossrefAdapter {
                 .orElseGet(() -> SourceResult.unavailable(null, null));
     }
 
+    /** Minimal per-DOI work record for reconciliation (FR-EXT-5). */
+    public record WorkRecord(String title, int authorCount, String firstAuthorFamily, Integer publishedYear) {}
+
+    public SourceResult<WorkRecord> workByDoi(String doi) {
+        String key = "works:" + doi;
+        String url = baseUrl + "/works/" + doi + "?mailto=" + contactEmail;
+        return apiRecords.getOrFetch(SOURCE, key, url, Map.of())
+                .map(this::toWorkResult)
+                .orElseGet(() -> SourceResult.unavailable(null, null));
+    }
+
+    private SourceResult<WorkRecord> toWorkResult(RecordedResponse response) {
+        if (response.statusCode() == 404) {
+            return SourceResult.notFound(response.apiRecordId(), response.retrievedAt(), response.fromCache());
+        }
+        if (response.statusCode() != 200) {
+            return SourceResult.unavailable(response.apiRecordId(), response.retrievedAt());
+        }
+        try {
+            JsonNode message = objectMapper.readTree(response.body()).path("message");
+            String title = null;
+            JsonNode titles = message.path("title");
+            if (titles.isArray() && !titles.isEmpty()) {
+                title = titles.get(0).asText();
+            }
+            JsonNode authorsNode = message.path("author");
+            int authorCount = authorsNode.isArray() ? authorsNode.size() : 0;
+            String firstFamily = null;
+            if (authorsNode.isArray() && !authorsNode.isEmpty()) {
+                firstFamily = textOrNull(authorsNode.get(0), "family");
+            }
+            Integer year = null;
+            JsonNode dateParts = message.path("issued").path("date-parts");
+            if (dateParts.isArray() && !dateParts.isEmpty() && dateParts.get(0).isArray()
+                    && !dateParts.get(0).isEmpty()) {
+                year = dateParts.get(0).get(0).asInt();
+            }
+            return SourceResult.ok(new WorkRecord(title, authorCount, firstFamily, year),
+                    response.apiRecordId(), response.retrievedAt(), response.fromCache());
+        } catch (Exception e) {
+            return SourceResult.unavailable(response.apiRecordId(), response.retrievedAt());
+        }
+    }
+
     private SourceResult<JournalSourceIdentity> toResult(RecordedResponse response, String issn) {
         if (response.statusCode() == 404) {
             return SourceResult.notFound(response.apiRecordId(), response.retrievedAt(), response.fromCache());

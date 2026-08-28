@@ -45,6 +45,37 @@ public class OpenAlexAdapter {
                 .orElseGet(() -> SourceResult.unavailable(null, null));
     }
 
+    /** Minimal per-DOI work record for reconciliation (FR-EXT-5). */
+    public record WorkRecord(String title, int authorCount, Integer publishedYear) {}
+
+    public SourceResult<WorkRecord> workByDoi(String doi) {
+        String key = "works:doi:" + doi;
+        String url = baseUrl + "/works/https://doi.org/" + doi + "?mailto=" + contactEmail;
+        return apiRecords.getOrFetch(SOURCE, key, url, Map.of())
+                .map(this::toWorkResult)
+                .orElseGet(() -> SourceResult.unavailable(null, null));
+    }
+
+    private SourceResult<WorkRecord> toWorkResult(RecordedResponse response) {
+        if (response.statusCode() == 404) {
+            return SourceResult.notFound(response.apiRecordId(), response.retrievedAt(), response.fromCache());
+        }
+        if (response.statusCode() != 200) {
+            return SourceResult.unavailable(response.apiRecordId(), response.retrievedAt());
+        }
+        try {
+            JsonNode root = objectMapper.readTree(response.body());
+            JsonNode authorships = root.path("authorships");
+            return SourceResult.ok(new WorkRecord(
+                            textOrNull(root, "display_name"),
+                            authorships.isArray() ? authorships.size() : 0,
+                            root.hasNonNull("publication_year") ? root.get("publication_year").asInt() : null),
+                    response.apiRecordId(), response.retrievedAt(), response.fromCache());
+        } catch (Exception e) {
+            return SourceResult.unavailable(response.apiRecordId(), response.retrievedAt());
+        }
+    }
+
     private SourceResult<JournalSourceIdentity> toResult(RecordedResponse response) {
         if (response.statusCode() == 404) {
             return SourceResult.notFound(response.apiRecordId(), response.retrievedAt(), response.fromCache());

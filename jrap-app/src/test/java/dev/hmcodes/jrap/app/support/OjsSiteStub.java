@@ -81,7 +81,18 @@ public final class OjsSiteStub {
                     <a href="/private/secret">Internal</a>
                     </body>""".formatted(TITLE, OJS_GENERATOR, TITLE, ISSN));
             case "/about" -> html(exchange, "<head><title>About the Journal</title></head><body>About. <a href='/about/submissions'>Submissions</a></body>");
-            case "/about/editorialTeam" -> html(exchange, "<head><title>Editorial Team</title></head><body>Prof. A (Univ X)</body>");
+            case "/about/editorialTeam" -> html(exchange, """
+                    <head><title>Editorial Team</title></head><body>
+                    <h3>Editor-in-Chief</h3>
+                    <p><strong>Prof. Ali Hassan</strong>, University of Baghdad, Iraq
+                       <a href="https://orcid.org/0000-0001-2345-6789">ORCID</a></p>
+                    <h3>Associate Editors</h3>
+                    <p><strong>Dr. Sara Ahmed</strong>, University of Jordan, Jordan</p>
+                    <p><strong>Dr. Omar Khalid</strong>, Cairo University, Egypt</p>
+                    <h3>Editorial Board Members</h3>
+                    <p><strong>Prof. Fatima Noor</strong>, King Saud University, Saudi Arabia</p>
+                    <p><strong>Dr. John Smith</strong>, University of Manchester, United Kingdom</p>
+                    </body>""");
             case "/about/submissions" -> html(exchange, "<head><title>Submissions</title></head><body>Author guidelines here</body>");
             case "/ethics" -> html(exchange, "<head><title>Publication Ethics</title></head><body>COPE-aligned malpractice statement</body>");
             case "/announcement" -> html(exchange, "<head><title>Announcements</title></head><body>News</body>");
@@ -94,17 +105,27 @@ public final class OjsSiteStub {
             case "/issue/view/2" -> html(exchange, """
                     <head><title>Vol 2</title></head><body>
                     <a href="/article/view/201">Article 201</a></body>""");
-            case "/article/view/101" -> html(exchange, """
-                    <head><title>Article 101</title></head><body><h1>Article 101</h1>
-                    <p>ISSN: %s</p><a href="/article/download/101/1">PDF</a></body>""".formatted(ISSN));
-            case "/article/view/102" -> html(exchange, "<head><title>Article 102</title></head><body><h1>Article 102</h1></body>");
-            case "/article/view/201" -> html(exchange, "<head><title>Article 201</title></head><body><h1>Article 201</h1></body>");
+            case "/article/view/101" -> html(exchange, articleHtml(101,
+                    "Machine learning for stub diagnostics", "10.99999/stub.101"));
+            case "/article/view/102" -> html(exchange, articleHtml(102,
+                    "Deep survey of stub networks", "10.99999/stub.102"));
+            case "/article/view/201" -> html(exchange, articleHtml(201,
+                    "Stub optimisation in clinical settings", "10.99999/stub.201"));
             case "/article/download/101/1" -> respond(exchange, 200, "application/pdf", pdfBytes);
             case "/private/secret" -> html(exchange, "<head><title>Secret</title></head><body>should never be fetched</body>");
             case "/oai" -> respond(exchange, 200, "text/xml",
                     oaiXml(query).getBytes(StandardCharsets.UTF_8));
             default -> {
-                if (path.startsWith("/sources/issn:")) {
+                if (path.startsWith("/works/")) {
+                    String rest = path.substring("/works/".length());
+                    boolean openAlexStyle = rest.contains("doi.org");
+                    String doi = openAlexStyle
+                            ? rest.substring(rest.indexOf("doi.org/") + "doi.org/".length())
+                            : rest;
+                    respond(exchange, 200, "application/json",
+                            (openAlexStyle ? openAlexWorkJson(doi) : crossrefWorkJson(doi))
+                                    .getBytes(StandardCharsets.UTF_8));
+                } else if (path.startsWith("/sources/issn:")) {
                     respond(exchange, 200, "application/json", openAlexJson().getBytes(StandardCharsets.UTF_8));
                 } else if (path.startsWith("/journals/")) {
                     respond(exchange, 200, "application/json", crossrefJson().getBytes(StandardCharsets.UTF_8));
@@ -156,6 +177,65 @@ public final class OjsSiteStub {
                 <responseDate>2026-08-28T00:00:00Z</responseDate>
                 <ListRecords>%s</ListRecords></OAI-PMH>
                 """.formatted(recordsXml);
+    }
+
+    private String articleHtml(int id, String title, String doi) {
+        return """
+                <head>
+                  <title>%s</title>
+                  <meta name="citation_title" content="%s">
+                  <meta name="citation_author" content="Ali Hassan">
+                  <meta name="citation_author_institution" content="University of Baghdad, Iraq">
+                  <meta name="citation_author" content="Sara Ahmed">
+                  <meta name="citation_author_institution" content="University of Jordan, Jordan">
+                  <meta name="citation_doi" content="%s">
+                  <meta name="citation_publication_date" content="2026/03/01">
+                  <meta name="citation_firstpage" content="1">
+                  <meta name="citation_lastpage" content="12">
+                  <meta name="citation_keywords" content="stub; testing; extraction">
+                  <meta name="DC.Description" content="This study evaluates the performance of stub systems in a controlled environment and reports the results of the evaluation across multiple settings.">
+                </head>
+                <body><h1>%s</h1>
+                <p>Received: 2026-01-05 | Accepted: 2026-02-10 | Published: 2026-03-01</p>
+                <p>DOI: https://doi.org/%s</p>
+                %s
+                <div class="item references"><h3>References</h3>
+                  <p>Smith J, Brown K. Foundations of stub science. Journal of Stubs. 2024;12(3):45-58.</p>
+                  <p>Ahmed S. Advanced stub methodology and its applications. Stub Review. 2025;8(1):12-29.</p>
+                  <p>Hassan A, Noor F. Clinical stub interventions: a systematic review. 2023;5(2):101-118.</p>
+                </div>
+                </body>""".formatted(title, title, doi, title, doi,
+                id == 101 ? "<a href=\"/article/download/101/1\">PDF</a>" : "");
+    }
+
+    private String crossrefWorkJson(String doi) {
+        // stub.102's Crossref record disagrees with the site title (seeded FR-EXT-5 mismatch).
+        String title = doi.endsWith("stub.102")
+                ? "Completely different archival title"
+                : switch (doi.substring(doi.length() - 3)) {
+                    case "101" -> "Machine learning for stub diagnostics";
+                    case "201" -> "Stub optimisation in clinical settings";
+                    default -> "Unknown";
+                };
+        return """
+                {"status":"ok","message":{"title":["%s"],
+                 "author":[{"given":"Ali","family":"Hassan"},{"given":"Sara","family":"Ahmed"}],
+                 "issued":{"date-parts":[[2026,3,1]]}}}
+                """.formatted(title);
+    }
+
+    private String openAlexWorkJson(String doi) {
+        String title = switch (doi.substring(doi.length() - 3)) {
+            case "101" -> "Machine learning for stub diagnostics";
+            case "102" -> "Deep survey of stub networks";
+            case "201" -> "Stub optimisation in clinical settings";
+            default -> "Unknown";
+        };
+        return """
+                {"display_name":"%s","publication_year":2026,
+                 "authorships":[{"author":{"display_name":"Ali Hassan"}},
+                                {"author":{"display_name":"Sara Ahmed"}}]}
+                """.formatted(title);
     }
 
     private byte[] buildPdf() {

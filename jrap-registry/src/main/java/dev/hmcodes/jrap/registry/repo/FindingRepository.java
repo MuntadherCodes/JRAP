@@ -14,4 +14,7 @@ public interface FindingRepository extends JpaRepository<Finding, UUID> {
 
     @Transactional(readOnly = true)
     boolean existsByJournalIdAndCode(UUID journalId, String code);
+
+    @Transactional(readOnly = true)
+    boolean existsByAuditIdAndCategory(UUID auditId, String category);
 }

@@ -36,6 +36,10 @@ public class Finding implements Persistable<UUID> {
     @Column(name = "journal_id", nullable = false)
     private UUID journalId;
 
+    /** Null for registry-level findings (Phase 2); set for findings produced by an audit run. */
+    @Column(name = "audit_id")
+    private UUID auditId;
+
     @Column(nullable = false)
     private String category;
 
@@ -83,6 +87,8 @@ public class Finding implements Persistable<UUID> {
     public UUID getId() { return id; }
     public UUID getOrganisationId() { return organisationId; }
     public UUID getJournalId() { return journalId; }
+    public UUID getAuditId() { return auditId; }
+    public void setAuditId(UUID auditId) { this.auditId = auditId; }
     public String getCategory() { return category; }
     public String getCode() { return code; }
     public Severity getSeverity() { return severity; }

@@ -122,6 +122,8 @@ export interface AuditDto {
   pageCap: number;
   pagesFetched: number;
   pagesSkipped: number;
+  articlesExtracted: number;
+  boardMembersExtracted: number;
   error: string | null;
   createdAt: string;
   startedAt: string | null;
@@ -142,6 +144,48 @@ export interface SkippedUrlDto {
   status: string;
   reason: string | null;
   at: string | null;
+}
+
+export interface ExtractionSummaryDto {
+  boardMembers: number;
+  boardMembersNeedingReview: number;
+  articles: number;
+  articlesNeedingReview: number;
+}
+
+export interface BoardMemberDto {
+  id: string;
+  name: string;
+  role: string | null;
+  institution: string | null;
+  country: string | null;
+  method: string;
+  confidence: number;
+  needsReview: boolean;
+}
+
+export interface ExtractedAuthorDto {
+  position: number;
+  name: string;
+  affiliation: string | null;
+  country: string | null;
+}
+
+export interface ExtractedArticleDto {
+  id: string;
+  title: string | null;
+  doi: string | null;
+  datePublished: string | null;
+  dateSubmitted: string | null;
+  dateAccepted: string | null;
+  titleScript: string | null;
+  abstractLanguage: string | null;
+  referencesCount: number;
+  referencesRomanShare: number | null;
+  method: string;
+  confidence: number;
+  needsReview: boolean;
+  authors: ExtractedAuthorDto[];
 }
 
 export const api = {
@@ -172,4 +216,8 @@ export const api = {
   auditSnapshots: (id: string) => request<SnapshotDto[]>(`/api/v1/audits/${id}/snapshots`),
   auditSkipped: (id: string) => request<SkippedUrlDto[]>(`/api/v1/audits/${id}/skipped`),
   cancelAudit: (id: string) => request<void>(`/api/v1/audits/${id}/cancel`, { method: 'POST' }),
+  extractionSummary: (id: string) =>
+    request<ExtractionSummaryDto>(`/api/v1/audits/${id}/extraction-summary`),
+  auditBoard: (id: string) => request<BoardMemberDto[]>(`/api/v1/audits/${id}/board`),
+  auditArticles: (id: string) => request<ExtractedArticleDto[]>(`/api/v1/audits/${id}/articles`),
 };

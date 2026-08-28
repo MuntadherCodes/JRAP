@@ -216,6 +216,82 @@ class CrawlPipelineIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    @Order(8)
+    void extractionProducesBoardAndArticlesWithProvenance() throws Exception {
+        // FR-EXT-1/2/3/4: deterministic extraction with confidence + provenance.
+        mockMvc.perform(get("/api/v1/audits/{id}/extraction-summary", auditId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.boardMembers").value(5))
+                .andExpect(jsonPath("$.boardMembersNeedingReview").value(0))
+                .andExpect(jsonPath("$.articles").value(3))
+                .andExpect(jsonPath("$.articlesNeedingReview").value(0));
+
+        mockMvc.perform(get("/api/v1/audits/{id}", auditId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.articlesExtracted").value(3))
+                .andExpect(jsonPath("$.boardMembersExtracted").value(5))
+                .andExpect(jsonPath("$.stage").value("ENRICH"));
+
+        JsonNode board = getJson("/api/v1/audits/" + auditId + "/board");
+        assertThat(board.findValuesAsText("name")).contains("Prof. Ali Hassan", "Dr. John Smith");
+        boolean aliOk = false;
+        for (JsonNode member : board) {
+            assertThat(member.get("needsReview").asBoolean()).isFalse();
+            assertThat(member.get("method").asText()).isEqualTo("PARSER");
+            if (member.get("name").asText().equals("Prof. Ali Hassan")) {
+                assertThat(member.get("institution").asText()).isEqualTo("University of Baghdad");
+                assertThat(member.get("country").asText()).isEqualTo("Iraq");
+                aliOk = true;
+            }
+        }
+        assertThat(aliOk).isTrue();
+
+        JsonNode articles = getJson("/api/v1/audits/" + auditId + "/articles");
+        assertThat(articles.size()).isEqualTo(3);
+        boolean article101Ok = false;
+        for (JsonNode article : articles) {
+            assertThat(article.get("authors").size()).isEqualTo(2);
+            assertThat(article.get("needsReview").asBoolean()).isFalse();
+            if ("10.99999/stub.101".equals(article.path("doi").asText())) {
+                assertThat(article.get("title").asText())
+                        .isEqualTo("Machine learning for stub diagnostics");
+                assertThat(article.get("datePublished").asText()).isEqualTo("2026/03/01");
+                assertThat(article.get("dateSubmitted").asText()).isEqualTo("2026-01-05");
+                assertThat(article.get("dateAccepted").asText()).isEqualTo("2026-02-10");
+                assertThat(article.get("titleScript").asText()).isEqualTo("ROMAN");
+                assertThat(article.get("abstractLanguage").asText()).isEqualTo("en");
+                assertThat(article.get("referencesCount").asInt()).isEqualTo(3);
+                assertThat(article.get("authors").get(0).get("country").asText()).isEqualTo("Iraq");
+                article101Ok = true;
+            }
+        }
+        assertThat(article101Ok).isTrue();
+    }
+
+    @Test
+    @Order(9)
+    void reconciliationFlagsTheSeededCrossrefMismatchOnly() throws Exception {
+        // FR-EXT-5: stub.102's Crossref record deliberately disagrees on the title.
+        JsonNode findings = getJson("/api/v1/journals/" + journalId + "/findings");
+        List<String> codes = findings.findValuesAsText("code");
+        assertThat(codes).contains("EXT_TITLE_MISMATCH_CROSSREF");
+        assertThat(codes).doesNotContain("EXT_TITLE_MISMATCH_OPENALEX",
+                "EXT_AUTHOR_COUNT_MISMATCH_CROSSREF", "EXT_DOI_NOT_IN_CROSSREF",
+                "EXT_DATE_MISMATCH_CROSSREF");
+
+        // NFR-AI-1: provider disabled -> deterministic parsers only, zero LLM calls.
+        try (Connection superuser = POSTGRES.getPostgresDatabase().getConnection();
+             PreparedStatement count = superuser.prepareStatement("select count(*) from llm_call")) {
+            try (var rs = count.executeQuery()) {
+                assertThat(rs.next()).isTrue();
+                assertThat(rs.getLong(1)).isZero();
+            }
+        }
+    }
+
+    @Test
     @Order(7)
     void auditsAreInvisibleAcrossTenants() throws Exception {
         register("Crawl Org B", "owner@crawl-b.example");
