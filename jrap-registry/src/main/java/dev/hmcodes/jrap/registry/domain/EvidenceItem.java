@@ -49,6 +49,19 @@ public class EvidenceItem implements Persistable<UUID> {
 
     private String excerpt;
 
+    /** FR-INT-7 manual evidence: uploaded payload in the snapshot store. */
+    @Column(name = "storage_key")
+    private String storageKey;
+
+    @Column(name = "content_type")
+    private String contentType;
+
+    @Column(name = "audit_id")
+    private UUID auditId;
+
+    @Column(name = "uploaded_by")
+    private UUID uploadedBy;
+
     @Column(name = "retrieved_at", nullable = false)
     private Instant retrievedAt;
 
@@ -79,8 +92,17 @@ public class EvidenceItem implements Persistable<UUID> {
     public void setSnapshotId(UUID snapshotId) { this.snapshotId = snapshotId; }
     public String getSource() { return source; }
     public String getExcerpt() { return excerpt; }
+    public String getStorageKey() { return storageKey; }
+    public String getContentType() { return contentType; }
+    public UUID getAuditId() { return auditId; }
+    public UUID getUploadedBy() { return uploadedBy; }
     public Instant getRetrievedAt() { return retrievedAt; }
     public Instant getCreatedAt() { return createdAt; }
+
+    public void setStorageKey(String storageKey) { this.storageKey = storageKey; }
+    public void setContentType(String contentType) { this.contentType = contentType; }
+    public void setAuditId(UUID auditId) { this.auditId = auditId; }
+    public void setUploadedBy(UUID uploadedBy) { this.uploadedBy = uploadedBy; }
 
     @Transient
     private boolean isNew = true;

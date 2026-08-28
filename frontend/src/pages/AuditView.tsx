@@ -83,6 +83,13 @@ export default function AuditView() {
       {!ACTIVE.includes(audit.status) && (
         <>
           {analysis && analysis.gateway.length > 0 && (
+            <p>
+              <Link to={`/audits/${audit.id}/review`}>
+                <button>{t('openReviewQueue')}</button>
+              </Link>
+            </p>
+          )}
+          {analysis && analysis.gateway.length > 0 && (
             <>
               <h2>{t('gatewayChecks')}</h2>
               <table>

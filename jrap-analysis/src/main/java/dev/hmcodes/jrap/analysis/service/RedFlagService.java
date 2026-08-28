@@ -36,7 +36,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.SortedMap;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * The red-flag catalogue (§5.3, FR-ANL-6..11). Deterministic detectors; misconduct-class
@@ -48,8 +50,25 @@ import java.util.UUID;
 public class RedFlagService {
 
     private static final Logger log = LoggerFactory.getLogger(RedFlagService.class);
-    public static final String DETECTOR_VERSION = "red-flags/1.0.0";
+    public static final String DETECTOR_VERSION = "red-flags/1.1.0";
     public static final String CATEGORY = "red-flag";
+
+    /**
+     * RF-12: top-level discipline terms counted (word-boundary) on the scope/about page.
+     * A journal claiming many unrelated fields while publishing a thin annual volume is
+     * the "scope over-breadth relative to output volume" pattern (§5.3).
+     */
+    private static final List<String> DISCIPLINE_TERMS = List.of(
+            "medicine", "medical", "engineering", "physics", "chemistry", "biology",
+            "mathematics", "economics", "law", "education", "agriculture",
+            "computer science", "social science", "humanities", "arts", "nursing",
+            "pharmacy", "veterinary", "geology", "linguistics", "psychology",
+            "management", "environment", "energy", "materials science", "history",
+            "sports", "architecture", "dentistry", "theology");
+
+    private static final List<String> BREADTH_PHRASES = List.of(
+            "multidisciplinary", "all fields", "all areas", "various fields",
+            "all disciplines", "wide range of disciplines");
 
     private static final List<String> SOLICITATION_PATTERNS = List.of(
             "must cite", "required to cite", "cite at least", "citation requirement",
@@ -100,9 +119,68 @@ public class RedFlagService {
         referenceInjection(audit, data, rubric);                      // RF-08
         indexClaims(audit, data);                                     // RF-10 (indicator)
         citationSolicitation(audit, data);                            // RF-11 (indicator)
+        scopeOverBreadth(audit, data, rubric);                        // RF-12 (indicator)
         metadataHygiene(audit, metrics, rubric);                      // RF-13
-        // RF-09 identity inconsistencies already exist as Phase-2 'identity' findings;
-        // RF-12 scope over-breadth is deferred (not in the FR-ANL M-set).
+        // RF-09 identity inconsistencies already exist as Phase-2 'identity' findings.
+    }
+
+    /**
+     * RF-12 — scope over-breadth relative to output volume (§5.3): the journal's
+     * scope/about page claims many unrelated top-level fields while the annual output
+     * (OpenAlex works per year) is thin. Scope judgment is human territory, so this is
+     * an indicator requiring verification, never an assertion.
+     */
+    private void scopeOverBreadth(Audit audit, AnalysisData data, Rubric rubric) {
+        Snapshot scopePage = data.snapshots().stream()
+                .filter(s -> "focus-and-scope".equals(s.getPageType()))
+                .findFirst()
+                .or(() -> data.snapshots().stream()
+                        .filter(s -> "about".equals(s.getPageType())).findFirst())
+                .or(() -> data.snapshots().stream()
+                        .filter(s -> "home".equals(s.getPageType())).findFirst())
+                .orElse(null);
+        if (scopePage == null) {
+            return;
+        }
+        String text = loadText(scopePage);
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        String lower = text.toLowerCase(java.util.Locale.ROOT);
+        List<String> matched = DISCIPLINE_TERMS.stream()
+                .filter(term -> Pattern.compile("\\b" + Pattern.quote(term)).matcher(lower).find())
+                .toList();
+        boolean phraseSignal = BREADTH_PHRASES.stream().anyMatch(lower::contains);
+        int minFields = (int) rubric.threshold("scopeBreadthMinFields");
+        if (matched.size() < minFields && !phraseSignal) {
+            return;
+        }
+
+        // Annual output: mean works over the last three complete years OpenAlex knows.
+        SortedMap<Integer, Long> byYear = data.worksByYear();
+        if (byYear == null || byYear.isEmpty()) {
+            return; // no volume evidence — regularity checks handle missing output data
+        }
+        List<Long> lastYears = byYear.keySet().stream()
+                .sorted(java.util.Comparator.reverseOrder())
+                .limit(3)
+                .map(byYear::get)
+                .toList();
+        double annual = lastYears.stream().mapToLong(Long::longValue).average().orElse(0);
+        if (annual >= rubric.threshold("scopeBreadthMaxAnnualOutput")) {
+            return;
+        }
+
+        String breadth = phraseSignal
+                ? "an explicitly unlimited scope (\"multidisciplinary\"/\"all fields\")"
+                : matched.size() + " distinct top-level fields (" + String.join(", ", matched) + ")";
+        record(audit, "RF-12", Finding.Severity.MEDIUM, Finding.Status.NEEDS_VERIFICATION,
+                "Scope over-breadth relative to output volume",
+                "The scope page claims " + breadth + " while the journal publishes about "
+                        + Math.round(annual) + " articles/year. Broad claimed scope with thin "
+                        + "output is a questionable-journal pattern; a reviewer should judge "
+                        + "whether the stated scope is credible for this output level.",
+                snapshotEvidence(audit, scopePage, clip(breadth + "; ~" + Math.round(annual) + "/year")));
     }
 
     private void volumeAnomalies(Audit audit, Map<String, MetricValue> metrics) {

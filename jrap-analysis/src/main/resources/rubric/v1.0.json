@@ -24,7 +24,9 @@
     "refInjectionMinLists": 5,
     "refInjectionListShare": 0.30,
     "allCapsTitleShareMax": 0.50,
-    "nonRomanNameShareMax": 0.10
+    "nonRomanNameShareMax": 0.10,
+    "scopeBreadthMinFields": 6,
+    "scopeBreadthMaxAnnualOutput": 40
   },
   "deltas": {
     "policy.reviewPolicyMissing": 2,

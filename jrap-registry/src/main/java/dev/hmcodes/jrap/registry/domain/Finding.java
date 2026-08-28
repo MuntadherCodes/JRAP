@@ -63,6 +63,23 @@ public class Finding implements Persistable<UUID> {
     @Column(name = "detector_version", nullable = false)
     private String detectorVersion;
 
+    /** FR-REV-4: explicitly excluded from release by an analyst (listed in the report annex). */
+    @Column(nullable = false)
+    private boolean excluded;
+
+    @Column(name = "exclusion_reason")
+    private String exclusionReason;
+
+    /** Latest analyst annotation (full history in review_decision). */
+    @Column(name = "review_note")
+    private String reviewNote;
+
+    @Column(name = "reviewed_by")
+    private UUID reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private Instant reviewedAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -100,6 +117,29 @@ public class Finding implements Persistable<UUID> {
 
     public void setSeverity(Severity severity) { this.severity = severity; }
     public void setStatus(Status status) { this.status = status; }
+
+    public boolean isExcluded() { return excluded; }
+    public String getExclusionReason() { return exclusionReason; }
+    public String getReviewNote() { return reviewNote; }
+    public UUID getReviewedBy() { return reviewedBy; }
+    public Instant getReviewedAt() { return reviewedAt; }
+
+    public void setReviewNote(String reviewNote) { this.reviewNote = reviewNote; }
+
+    public void markReviewed(UUID reviewer, Instant when) {
+        this.reviewedBy = reviewer;
+        this.reviewedAt = when;
+    }
+
+    public void exclude(String reason) {
+        this.excluded = true;
+        this.exclusionReason = reason;
+    }
+
+    public void include() {
+        this.excluded = false;
+        this.exclusionReason = null;
+    }
 
     @Transient
     private boolean isNew = true;

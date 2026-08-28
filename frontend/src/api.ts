@@ -225,6 +225,60 @@ export interface AuditFindingDto {
   createdAt: string;
 }
 
+export interface QueueItemDto {
+  id: string;
+  kind: 'FINDING' | 'BOARD_MEMBER' | 'ARTICLE';
+  severity: string | null;
+  status: string;
+  excluded: boolean;
+  code: string | null;
+  title: string;
+  description: string;
+  reviewNote: string | null;
+  confidence: number | null;
+  snapshotId: string | null;
+  excerpt: string | null;
+  fields: Record<string, string | null> | null;
+  evidenceItemIds: string[];
+  createdAt: string;
+}
+
+export interface QueuePageDto {
+  items: QueueItemDto[];
+  page: number;
+  size: number;
+  total: number;
+  findingsTotal: number;
+  extractionsTotal: number;
+}
+
+export interface DecisionDto {
+  id: string;
+  targetType: string;
+  targetId: string;
+  action: string;
+  reason: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+  decidedByEmail: string;
+  createdAt: string;
+}
+
+export interface GateDto {
+  open: number;
+  needsVerification: number;
+  excluded: number;
+  releasable: boolean;
+}
+
+export interface SnapshotTextDto {
+  id: string;
+  url: string;
+  pageType: string;
+  fetchedAt: string;
+  text: string | null;
+}
+
 export const api = {
   register: (body: { organisationName: string; email: string; password: string; displayName: string }) =>
     request<{ organisationId: string }>('/api/v1/auth/register', { method: 'POST', body: JSON.stringify(body) }),
@@ -259,4 +313,58 @@ export const api = {
   auditArticles: (id: string) => request<ExtractedArticleDto[]>(`/api/v1/audits/${id}/articles`),
   auditAnalysis: (id: string) => request<AnalysisDto>(`/api/v1/audits/${id}/analysis`),
   auditFindings: (id: string) => request<AuditFindingDto[]>(`/api/v1/audits/${id}/findings`),
+  reviewQueue: (auditId: string, filter = 'all', page = 0, size = 200) =>
+    request<QueuePageDto>(
+      `/api/v1/audits/${auditId}/review/queue?filter=${filter}&page=${page}&size=${size}`,
+    ),
+  reviewGate: (auditId: string) => request<GateDto>(`/api/v1/audits/${auditId}/review/gate`),
+  reviewDecisions: (auditId: string) =>
+    request<DecisionDto[]>(`/api/v1/audits/${auditId}/review/decisions`),
+  confirmFinding: (id: string, auditId: string, note?: string) =>
+    request<void>(`/api/v1/findings/${id}/confirm?auditId=${auditId}`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    }),
+  rejectFinding: (id: string, auditId: string, reason: string) =>
+    request<void>(`/api/v1/findings/${id}/reject?auditId=${auditId}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  editFindingSeverity: (id: string, auditId: string, severity: string, reason: string) =>
+    request<void>(`/api/v1/findings/${id}/severity?auditId=${auditId}`, {
+      method: 'POST',
+      body: JSON.stringify({ severity, reason }),
+    }),
+  annotateFinding: (id: string, auditId: string, note: string) =>
+    request<void>(`/api/v1/findings/${id}/annotate?auditId=${auditId}`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    }),
+  excludeFinding: (id: string, auditId: string, reason: string) =>
+    request<void>(`/api/v1/findings/${id}/exclude?auditId=${auditId}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  includeFinding: (id: string, auditId: string) =>
+    request<void>(`/api/v1/findings/${id}/include?auditId=${auditId}`, { method: 'POST' }),
+  correctBoardMember: (
+    id: string,
+    body: { name?: string; role?: string; institution?: string; country?: string; note?: string },
+  ) => request<void>(`/api/v1/board-members/${id}/correct`, { method: 'POST', body: JSON.stringify(body) }),
+  confirmBoardMember: (id: string) =>
+    request<void>(`/api/v1/board-members/${id}/confirm`, { method: 'POST' }),
+  correctArticle: (
+    id: string,
+    body: {
+      title?: string;
+      doi?: string;
+      dateSubmitted?: string;
+      dateAccepted?: string;
+      datePublished?: string;
+      abstractLanguage?: string;
+      note?: string;
+    },
+  ) => request<void>(`/api/v1/articles/${id}/correct`, { method: 'POST', body: JSON.stringify(body) }),
+  confirmArticle: (id: string) => request<void>(`/api/v1/articles/${id}/confirm`, { method: 'POST' }),
+  snapshotText: (id: string) => request<SnapshotTextDto>(`/api/v1/snapshots/${id}/text`),
 };

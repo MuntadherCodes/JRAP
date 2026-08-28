@@ -81,7 +81,11 @@ public final class OjsSiteStub {
                     <a href="/announcement">Announcements</a>
                     <a href="/private/secret">Internal</a>
                     </body>""".formatted(TITLE, OJS_GENERATOR, TITLE, ISSN));
-            case "/about" -> html(exchange, "<head><title>About the Journal</title></head><body>About. <a href='/about/submissions'>Submissions</a></body>");
+            case "/about" -> html(exchange, """
+                    <head><title>About the Journal</title></head><body>About.
+                    <p>A multidisciplinary scope covering medicine, engineering, physics,
+                    chemistry, biology, economics, law, and education.</p>
+                    <a href='/about/submissions'>Submissions</a></body>""");
             case "/about/editorialTeam" -> html(exchange, """
                     <head><title>Editorial Team</title></head><body>
                     <h3>Editor-in-Chief</h3>

@@ -109,6 +109,14 @@ public class BoardMember implements Persistable<UUID> {
     public boolean isNeedsReview() { return needsReview; }
     public Instant getCreatedAt() { return createdAt; }
 
+    // Analyst corrections (FR-REV-2); normalizedName must be recomputed alongside name.
+    public void setName(String name) { this.name = name; }
+    public void setNormalizedName(String normalizedName) { this.normalizedName = normalizedName; }
+    public void setRole(String role) { this.role = role; }
+    public void setInstitution(String institution) { this.institution = institution; }
+    public void setCountry(String country) { this.country = country; }
+    public void setNeedsReview(boolean needsReview) { this.needsReview = needsReview; }
+
     @Transient
     private boolean isNew = true;
 

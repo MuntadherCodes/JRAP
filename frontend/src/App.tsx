@@ -9,6 +9,7 @@ import JournalDetail from './pages/JournalDetail';
 import Journals from './pages/Journals';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ReviewQueue from './pages/ReviewQueue';
 import VerifyEmail from './pages/VerifyEmail';
 
 export default function App() {
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="/journals" element={authed ? <Journals /> : <Navigate to="/login" replace />} />
         <Route path="/journals/:id" element={authed ? <JournalDetail /> : <Navigate to="/login" replace />} />
         <Route path="/audits/:id" element={authed ? <AuditView /> : <Navigate to="/login" replace />} />
+        <Route path="/audits/:id/review" element={authed ? <ReviewQueue /> : <Navigate to="/login" replace />} />
         <Route path="/" element={authed ? <Dashboard /> : <Navigate to="/login" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

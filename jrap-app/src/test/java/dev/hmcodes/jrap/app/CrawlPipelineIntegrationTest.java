@@ -232,7 +232,8 @@ class CrawlPipelineIntegrationTest extends IntegrationTestBase {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.articlesExtracted").value(3))
                 .andExpect(jsonPath("$.boardMembersExtracted").value(5))
-                .andExpect(jsonPath("$.stage").value("ANALYSE"));
+                // The automated pipeline hands over to analysts: completed audits rest at REVIEW.
+                .andExpect(jsonPath("$.stage").value("REVIEW"));
 
         JsonNode board = getJson("/api/v1/audits/" + auditId + "/board");
         assertThat(board.findValuesAsText("name")).contains("Prof. Ali Hassan", "Dr. John Smith");
@@ -335,12 +336,187 @@ class CrawlPipelineIntegrationTest extends IntegrationTestBase {
                 "RF-04",  // board members author in own journal
                 "RF-07",  // UNCLEAR: web search disabled
                 "RF-10",  // "Indexed in Scopus" claim
-                "RF-11"); // citation solicitation announcement
+                "RF-11",  // citation solicitation announcement
+                "RF-12"); // multidisciplinary scope claim vs ~7 articles/year
         // CON-6: misconduct-class results are indicators requiring verification.
         assertThat(statusByCode.get("RF-10")).isEqualTo("NEEDS_VERIFICATION");
         assertThat(statusByCode.get("RF-11")).isEqualTo("NEEDS_VERIFICATION");
+        assertThat(statusByCode.get("RF-12")).isEqualTo("NEEDS_VERIFICATION");
         assertThat(statusByCode.get("RF-02")).isEqualTo("AUTO");
         assertThat(statusByCode.keySet()).doesNotContain("RF-05", "RF-06", "RF-13");
+    }
+
+    @Test
+    @Order(12)
+    void reviewQueueListsFindingsAndSnapshotText() throws Exception {
+        // FR-REV-1: the queue carries the audit's findings plus journal-level identity
+        // findings a release would inherit; extractions were all confident, so none queue.
+        JsonNode queue = getJson("/api/v1/audits/" + auditId + "/review/queue?filter=all&size=200");
+        List<String> codes = queue.get("items").findValuesAsText("code");
+        assertThat(codes).contains("RF-01", "RF-02", "RF-11", "RF-12");
+        assertThat(queue.get("extractionsTotal").asLong()).isZero();
+        assertThat(queue.get("findingsTotal").asLong()).isEqualTo(queue.get("total").asLong());
+
+        // FR-REV-2 viewer support: snapshot text is servable for side-by-side checks.
+        JsonNode snapshots = getJson("/api/v1/audits/" + auditId + "/snapshots");
+        String snapshotId = snapshots.get(0).get("id").asText();
+        mockMvc.perform(get("/api/v1/snapshots/{id}/text", snapshotId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.url").isNotEmpty());
+    }
+
+    @Test
+    @Order(13)
+    void reviewActionsChangeStateAndAreLogged() throws Exception {
+        Map<String, String> idByCode = findingIdsByCode();
+
+        // FR-REV-1: a rejection without a reason is refused.
+        mockMvc.perform(post("/api/v1/findings/{id}/reject", idByCode.get("RF-01"))
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"\"}"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/v1/findings/{id}/confirm", idByCode.get("RF-02"))
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"Collapse verified against OpenAlex counts\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/findings/{id}/reject", idByCode.get("RF-01"))
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Volume pattern explained by a special issue\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/findings/{id}/severity", idByCode.get("RF-03"))
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"severity\":\"LOW\",\"reason\":\"Self-citation share is marginal\"}"))
+                .andExpect(status().isOk());
+
+        JsonNode findings = getJson("/api/v1/audits/" + auditId + "/findings");
+        Map<String, JsonNode> byCode = new java.util.HashMap<>();
+        for (JsonNode finding : findings) {
+            byCode.put(finding.get("code").asText(), finding);
+        }
+        assertThat(byCode.get("RF-02").get("status").asText()).isEqualTo("CONFIRMED");
+        assertThat(byCode.get("RF-01").get("status").asText()).isEqualTo("REJECTED");
+        assertThat(byCode.get("RF-03").get("severity").asText()).isEqualTo("LOW");
+    }
+
+    @Test
+    @Order(14)
+    void releaseGateTracksNeedsVerification() throws Exception {
+        // FR-REV-4: not releasable while unresolved needs-verification findings remain.
+        JsonNode before = getJson("/api/v1/audits/" + auditId + "/review/gate");
+        assertThat(before.get("releasable").asBoolean()).isFalse();
+        assertThat(before.get("needsVerification").asLong()).isGreaterThan(0);
+
+        Map<String, String> idByCode = findingIdsByCode();
+        // Exclude one indicator explicitly (annex-listed), confirm the rest.
+        mockMvc.perform(post("/api/v1/findings/{id}/exclude", idByCode.get("RF-10"))
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Indexing claim predates the audit window\"}"))
+                .andExpect(status().isOk());
+        JsonNode queue = getJson("/api/v1/audits/" + auditId
+                + "/review/queue?filter=needs-verification&size=200");
+        for (JsonNode item : queue.get("items")) {
+            if (!item.get("excluded").asBoolean()) {
+                mockMvc.perform(post("/api/v1/findings/{id}/confirm", item.get("id").asText())
+                                .header("Authorization", "Bearer " + ownerToken))
+                        .andExpect(status().isOk());
+            }
+        }
+
+        JsonNode after = getJson("/api/v1/audits/" + auditId + "/review/gate");
+        assertThat(after.get("needsVerification").asLong()).isZero();
+        assertThat(after.get("excluded").asLong()).isGreaterThan(0);
+        assertThat(after.get("releasable").asBoolean()).isTrue();
+    }
+
+    @Test
+    @Order(15)
+    void decisionHistoryIsCompleteAndImmutable() throws Exception {
+        // FR-INT-7: manual evidence attaches as a first-class, linkable evidence item.
+        Map<String, String> idByCode = findingIdsByCode();
+        String payload = java.util.Base64.getEncoder()
+                .encodeToString("fake-screenshot-bytes".getBytes(StandardCharsets.UTF_8));
+        MvcResult attach = mockMvc.perform(post("/api/v1/audits/{id}/evidence", auditId)
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"source":"ISSN Portal screenshot",
+                                 "description":"Registered title matches the site",
+                                 "findingId":"%s","contentType":"image/png",
+                                 "contentBase64":"%s"}
+                                """.formatted(idByCode.get("RF-10"), payload)))
+                .andExpect(status().isOk()).andReturn();
+        String evidenceId = objectMapper.readTree(attach.getResponse().getContentAsString())
+                .get("evidenceItemId").asText();
+        mockMvc.perform(get("/api/v1/evidence/{id}/content", evidenceId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertThat(result.getResponse().getContentAsByteArray())
+                        .isEqualTo("fake-screenshot-bytes".getBytes(StandardCharsets.UTF_8)));
+
+        // FR-REV-1: every action is in the history, attributed and timestamped.
+        JsonNode decisions = getJson("/api/v1/audits/" + auditId + "/review/decisions");
+        List<String> actions = decisions.findValuesAsText("action");
+        assertThat(actions).contains("CONFIRM", "REJECT", "EDIT_SEVERITY", "EXCLUDE", "ATTACH_EVIDENCE");
+        for (JsonNode decision : decisions) {
+            assertThat(decision.get("decidedByEmail").asText()).isEqualTo("owner@crawl-test.example");
+        }
+
+        // The decision log is write-once even for a superuser (DB trigger).
+        try (Connection superuser = POSTGRES.getPostgresDatabase().getConnection();
+             PreparedStatement update = superuser.prepareStatement(
+                     "update review_decision set reason = 'tampered'")) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(update::executeUpdate)
+                    .hasMessageContaining("immutable");
+        }
+    }
+
+    @Test
+    @Order(16)
+    void reviewIsTenantScopedAndViewerReadOnly() throws Exception {
+        // Cross-tenant: org B sees nothing of this audit's review surface.
+        String tokenB = login("owner@crawl-b.example");
+        mockMvc.perform(get("/api/v1/audits/{id}/review/queue", auditId)
+                        .header("Authorization", "Bearer " + tokenB))
+                .andExpect(status().isNotFound());
+
+        // VIEWERs read the queue but cannot decide (FR-AUTH role model).
+        mockMvc.perform(post("/api/v1/organisations/current/invitations")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"viewer@crawl-test.example\",\"role\":\"VIEWER\"}"))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/auth/accept-invitation")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"token":"%s","password":"%s","displayName":"Viewer"}
+                                """.formatted(emails.lastTokenFor("viewer@crawl-test.example"), PASSWORD)))
+                .andExpect(status().isNoContent());
+        String viewerToken = login("viewer@crawl-test.example");
+        mockMvc.perform(get("/api/v1/audits/{id}/review/queue", auditId)
+                        .header("Authorization", "Bearer " + viewerToken))
+                .andExpect(status().isOk());
+        Map<String, String> idByCode = findingIdsByCode();
+        mockMvc.perform(post("/api/v1/findings/{id}/confirm", idByCode.get("RF-11"))
+                        .header("Authorization", "Bearer " + viewerToken))
+                .andExpect(status().isForbidden());
+    }
+
+    private Map<String, String> findingIdsByCode() throws Exception {
+        JsonNode findings = getJson("/api/v1/audits/" + auditId + "/findings");
+        Map<String, String> idByCode = new java.util.HashMap<>();
+        for (JsonNode finding : findings) {
+            idByCode.put(finding.get("code").asText(), finding.get("id").asText());
+        }
+        return idByCode;
     }
 
     @Test
