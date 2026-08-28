@@ -40,11 +40,11 @@ public class CrossrefAdapter {
         String key = "journals:" + issn;
         String url = baseUrl + "/journals/" + issn + "?mailto=" + contactEmail;
         return apiRecords.getOrFetch(SOURCE, key, url, Map.of())
-                .map(this::toResult)
+                .map(response -> toResult(response, issn))
                 .orElseGet(() -> SourceResult.unavailable(null, null));
     }
 
-    private SourceResult<JournalSourceIdentity> toResult(RecordedResponse response) {
+    private SourceResult<JournalSourceIdentity> toResult(RecordedResponse response, String issn) {
         if (response.statusCode() == 404) {
             return SourceResult.notFound(response.apiRecordId(), response.retrievedAt(), response.fromCache());
         }
