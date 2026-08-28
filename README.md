@@ -13,7 +13,8 @@ ship last; Phase 9 is a beta release without billing.
 | `jrap-tenancy` | Organisations, users, roles, auth domain, security audit log |
 | `jrap-crawl` | Politeness engine, OJS profile, snapshot store *(Phase 3)* |
 | `jrap-extract` | Deterministic parsers, PDF/OCR, LLM extraction fallback *(Phase 4)* |
-| `jrap-integrations` | OpenAlex / Crossref / DOAJ / ISSN / search adapters *(Phase 2)* |
+| `jrap-integrations` | OpenAlex / Crossref / DOAJ / ISSN adapters, polite HTTP, ApiRecord cache |
+| `jrap-registry` | Journal registry + core Finding/Evidence domain (FR-JRN) |
 | `jrap-analysis` | Deterministic gateway checks, CSAB scoring, red flags *(Phase 5)* |
 | `jrap-review-reporting` | Finding queue, drafting, citation guard, exports *(Phases 6–7)* |
 | `jrap-ai-gateway` | Single LLM entry point: providers, prompt registry, budgets *(Phase 4)* |

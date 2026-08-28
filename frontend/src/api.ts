@@ -65,6 +65,55 @@ async function request<T>(path: string, options: RequestInit = {}, retry = true)
   return response.json();
 }
 
+export interface JournalDto {
+  id: string;
+  status: string;
+  title: string | null;
+  publisher: string | null;
+  country: string | null;
+  issnL: string | null;
+  issnPrint: string | null;
+  issnOnline: string | null;
+  platform: string | null;
+  homepageUrl: string | null;
+  openalexId: string | null;
+  doajId: string | null;
+  inCrossref: boolean;
+  inDoaj: boolean;
+  createdAt: string;
+}
+
+export interface IdentityRecordDto {
+  source: string;
+  availability: 'OK' | 'NOT_FOUND' | 'UNAVAILABLE';
+  title: string | null;
+  publisher: string | null;
+  country: string | null;
+  issnPrint: string | null;
+  issnOnline: string | null;
+  issnL: string | null;
+  apiRecordId: string | null;
+  retrievedAt: string;
+}
+
+export interface JournalDetailDto {
+  journal: JournalDto;
+  identity: IdentityRecordDto[];
+}
+
+export interface FindingDto {
+  id: string;
+  category: string;
+  code: string;
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO';
+  status: string;
+  title: string;
+  description: string;
+  detectorVersion: string;
+  createdAt: string;
+  evidenceItemIds: string[];
+}
+
 export const api = {
   register: (body: { organisationName: string; email: string; password: string; displayName: string }) =>
     request<{ organisationId: string }>('/api/v1/auth/register', { method: 'POST', body: JSON.stringify(body) }),
@@ -81,4 +130,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  registerJournal: (body: { issn?: string; url?: string }) =>
+    request<JournalDto>('/api/v1/journals', { method: 'POST', body: JSON.stringify(body) }),
+  listJournals: () => request<JournalDto[]>('/api/v1/journals'),
+  journalDetail: (id: string) => request<JournalDetailDto>(`/api/v1/journals/${id}`),
+  journalFindings: (id: string) => request<FindingDto[]>(`/api/v1/journals/${id}/findings`),
 };

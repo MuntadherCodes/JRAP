@@ -25,9 +25,21 @@ management:
         include: health,info,metrics,prometheus
 
 jrap:
+  # Contact address declared in the crawler/API User-Agent (CON-2/CON-3) — set per deployment.
+  contact-email: contact@jrap.example
   app:
     # Frontend base URL used in verification/invitation links.
     base-url: http://localhost:5173
+  integrations:
+    openalex-base-url: https://api.openalex.org
+    crossref-base-url: https://api.crossref.org
+    doaj-base-url: https://doaj.org
+    issn-portal-base-url: https://portal.issn.org
+    cache-ttl: P7D          # FR-INT-1 default TTL
+    not-found-ttl: PT6H
+    per-host-min-interval-ms: 1000   # CON-2: <= 1 req/s/host, configurable down only
+  quotas:
+    max-journals-default: 10   # admin-set per org via org_quota during beta (FR-JRN-3)
   security:
     # Dev-only default — override JRAP_SECURITY_JWT_SECRET in every real environment.
     jwt-secret: ZGV2LW9ubHktc2VjcmV0LWRldi1vbmx5LXNlY3JldC1kZXYtb25seS1zZWNyZXQ=

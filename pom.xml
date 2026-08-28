@@ -32,6 +32,7 @@
     <module>jrap-crawl</module>
     <module>jrap-extract</module>
     <module>jrap-integrations</module>
+    <module>jrap-registry</module>
     <module>jrap-analysis</module>
     <module>jrap-review-reporting</module>
     <module>jrap-ai-gateway</module>

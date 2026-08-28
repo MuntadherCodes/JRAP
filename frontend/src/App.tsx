@@ -4,6 +4,8 @@ import { clearSession, session } from './api';
 import { applyDirection } from './i18n';
 import AcceptInvitation from './pages/AcceptInvitation';
 import Dashboard from './pages/Dashboard';
+import JournalDetail from './pages/JournalDetail';
+import Journals from './pages/Journals';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import VerifyEmail from './pages/VerifyEmail';
@@ -26,6 +28,11 @@ export default function App() {
           {t('appName')} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>{t('tagline')}</span>
         </strong>
         <nav style={{ display: 'flex', gap: '0.6rem' }}>
+          {authed && (
+            <button className="secondary" onClick={() => navigate('/journals')}>
+              {t('journals')}
+            </button>
+          )}
           <button className="secondary" onClick={toggleLanguage}>
             {t('language')}
           </button>
@@ -47,6 +54,8 @@ export default function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/accept-invitation" element={<AcceptInvitation />} />
+        <Route path="/journals" element={authed ? <Journals /> : <Navigate to="/login" replace />} />
+        <Route path="/journals/:id" element={authed ? <JournalDetail /> : <Navigate to="/login" replace />} />
         <Route path="/" element={authed ? <Dashboard /> : <Navigate to="/login" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

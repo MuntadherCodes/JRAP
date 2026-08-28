@@ -8,12 +8,22 @@
     <artifactId>jrap-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
   </parent>
-  <artifactId>jrap-integrations</artifactId>
-  <name>JRAP integrations: OpenAlex/Crossref/DOAJ/ISSN adapters with caching (FR-INT-1..6)</name>
+  <artifactId>jrap-registry</artifactId>
+  <name>JRAP registry: journal registry and core finding/evidence domain (FR-JRN-1..3)</name>
   <dependencies>
     <dependency>
       <groupId>dev.hmcodes.jrap</groupId>
       <artifactId>jrap-common</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>dev.hmcodes.jrap</groupId>
+      <artifactId>jrap-integrations</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>dev.hmcodes.jrap</groupId>
+      <artifactId>jrap-tenancy</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
