@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useParams } from 'react-router-dom';
-import { AnalysisDto, api, AuditDto, AuditFindingDto, BoardMemberDto, ExtractedArticleDto, SkippedUrlDto, SnapshotDto } from '../api';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { AnalysisDto, api, AuditDto, AuditFindingDto, BoardMemberDto, ExtractedArticleDto, ReportSummaryDto, SkippedUrlDto, SnapshotDto } from '../api';
 
 const ACTIVE = ['PENDING', 'RUNNING'];
 
@@ -23,6 +23,9 @@ export default function AuditView() {
   const [articles, setArticles] = useState<ExtractedArticleDto[]>([]);
   const [analysis, setAnalysis] = useState<AnalysisDto | null>(null);
   const [auditFindings, setAuditFindings] = useState<AuditFindingDto[]>([]);
+  const [reports, setReports] = useState<ReportSummaryDto[]>([]);
+  const navigate = useNavigate();
+  const navigateReport = (reportId: string) => navigate(`/reports/${reportId}`);
 
   useEffect(() => {
     if (!id) return;
@@ -38,6 +41,7 @@ export default function AuditView() {
           setArticles(await api.auditArticles(id).catch(() => []));
           setAnalysis(await api.auditAnalysis(id).catch(() => null));
           setAuditFindings(await api.auditFindings(id).catch(() => []));
+          setReports(await api.listReports(id).catch(() => []));
           return; // terminal — stop polling
         }
       } catch {
@@ -83,11 +87,48 @@ export default function AuditView() {
       {!ACTIVE.includes(audit.status) && (
         <>
           {analysis && analysis.gateway.length > 0 && (
-            <p>
+            <p style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <Link to={`/audits/${audit.id}/review`}>
                 <button>{t('openReviewQueue')}</button>
               </Link>
+              <button
+                className="secondary"
+                onClick={async () => {
+                  const report = await api.generateReport(audit.id);
+                  setReports(await api.listReports(audit.id));
+                  navigateReport(report.id);
+                }}
+              >
+                {t('generateReport')}
+              </button>
             </p>
+          )}
+          {reports.length > 0 && (
+            <>
+              <h2>{t('reports')}</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>v</th>
+                    <th>{t('status')}</th>
+                    <th>{t('verdict')}</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reports.map(r => (
+                    <tr key={r.id}>
+                      <td>{r.version}</td>
+                      <td>{r.status}</td>
+                      <td>{r.verdict.replace('_', ' ')}</td>
+                      <td>
+                        <Link to={`/reports/${r.id}`}>{t('openReport')}</Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
           {analysis && analysis.gateway.length > 0 && (
             <>

@@ -74,6 +74,8 @@ class CrawlPipelineIntegrationTest extends IntegrationTestBase {
     private String ownerToken;
     private String journalId;
     private String auditId;
+    private String cappedAuditId;
+    private String reportId;
 
     @BeforeAll
     void setUp() throws Exception {
@@ -194,7 +196,7 @@ class CrawlPipelineIntegrationTest extends IntegrationTestBase {
     @Test
     @Order(6)
     void pageCapStopsTheCrawlAndRecordsSkips() throws Exception {
-        String cappedAuditId = createAudit();
+        cappedAuditId = createAudit();
         try (Connection superuser = POSTGRES.getPostgresDatabase().getConnection();
              PreparedStatement update = superuser.prepareStatement(
                      "update audit set page_cap = 2 where id = ?")) {
@@ -517,6 +519,152 @@ class CrawlPipelineIntegrationTest extends IntegrationTestBase {
             idByCode.put(finding.get("code").asText(), finding.get("id").asText());
         }
         return idByCode;
+    }
+
+    @Test
+    @Order(17)
+    void reportDraftHasFixedStructureRoadmapAndPassesGuard() throws Exception {
+        // FR-RPT-1: fixed section structure; CON-5: every factual sentence cited.
+        MvcResult generated = mockMvc.perform(post("/api/v1/audits/{id}/reports", auditId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DRAFT"))
+                .andExpect(jsonPath("$.guardPassed").value(true))
+                .andExpect(jsonPath("$.verdict").value("NOT_READY")) // G1 FAIL
+                .andReturn();
+        JsonNode report = objectMapper.readTree(generated.getResponse().getContentAsString());
+        reportId = report.get("id").asText();
+
+        List<String> sectionIds = new java.util.ArrayList<>();
+        int factual = 0;
+        int uncited = 0;
+        for (JsonNode section : report.get("sections")) {
+            sectionIds.add(section.get("id").asText());
+            for (JsonNode sentence : section.get("sentences")) {
+                assertThat(sentence.get("guard").asText()).isEqualTo("PASS");
+                if ("FACTUAL".equals(sentence.get("kind").asText())) {
+                    factual++;
+                    if (sentence.get("findingIds").isEmpty() && sentence.get("evidenceItemIds").isEmpty()) {
+                        uncited++;
+                    }
+                }
+            }
+        }
+        assertThat(sectionIds).contains("verdict", "gateway", "csab-policy", "csab-content",
+                "csab-standing", "csab-regularity", "csab-availability", "diversity", "findings",
+                "methodology", "disclaimer");
+        assertThat(sectionIds).doesNotContain("narrative"); // provider disabled (FR-RPT-2)
+        assertThat(report.get("narrativePromptVersion").isNull()).isTrue();
+        assertThat(factual).isGreaterThan(10);
+        assertThat(uncited).isZero(); // CON-5: no unreferenced factual sentence exists
+
+        // FR-RPT-6: roadmap actions from findings, gateway failures and weak scores.
+        List<String> actionIds = new java.util.ArrayList<>();
+        for (JsonNode action : report.get("roadmap")) {
+            actionIds.add(action.get("id").asText());
+        }
+        assertThat(actionIds).contains("publish-review-policy",      // G1 FAIL
+                "citation-integrity-statement",                       // RF-02 confirmed
+                "board-internationalisation");                        // standing score 1
+        // FR-REV-4: the excluded RF-10 sits in the annex, not the body.
+        assertThat(report.get("exclusions").findValuesAsText("code")).contains("RF-10");
+        assertThat(objectMapper.writeValueAsString(report.get("sections"))).doesNotContain("RF-10 ");
+
+        // Audit stage tracks the report lifecycle: guard passed => GUARD.
+        mockMvc.perform(get("/api/v1/audits/{id}", auditId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stage").value("GUARD"));
+    }
+
+    @Test
+    @Order(18)
+    void sentenceEditingReleaseImmutabilityAndExports() throws Exception {
+        // FR-RPT-4 edit path: change a sentence's text, then remove a structural one.
+        mockMvc.perform(post("/api/v1/reports/{id}/sentences", reportId)
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sentenceId\":\"disclaimer-independence\",\"remove\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.guardPassed").value(true));
+
+        // FR-REV-4 + FR-RPT-5: release succeeds (gate clean since Order 14), hash-stamped.
+        MvcResult released = mockMvc.perform(post("/api/v1/reports/{id}/release", reportId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RELEASED"))
+                .andReturn();
+        String hash = objectMapper.readTree(released.getResponse().getContentAsString())
+                .get("contentHash").asText();
+        assertThat(hash).hasSize(64);
+        mockMvc.perform(get("/api/v1/audits/{id}", auditId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(jsonPath("$.stage").value("RELEASE"));
+
+        // Released reports are immutable: API-side and DB-side.
+        mockMvc.perform(post("/api/v1/reports/{id}/release", reportId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/reports/{id}/sentences", reportId)
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sentenceId\":\"verdict-stats\",\"text\":\"tampered\"}"))
+                .andExpect(status().isConflict());
+        try (Connection superuser = POSTGRES.getPostgresDatabase().getConnection();
+             PreparedStatement update = superuser.prepareStatement(
+                     "update report set verdict = 'READY' where id = ?")) {
+            update.setObject(1, UUID.fromString(reportId));
+            org.assertj.core.api.Assertions.assertThatThrownBy(update::executeUpdate)
+                    .hasMessageContaining("immutable");
+        }
+
+        // FR-RPT-5 exports: HTML with superscript citations + hash, DOCX zip, PDF.
+        MvcResult html = mockMvc.perform(get("/api/v1/reports/{id}/export?format=html", reportId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        String htmlBody = html.getResponse().getContentAsString();
+        assertThat(htmlBody).contains("sup class=\"cite\"").contains(hash)
+                .doesNotContain("DRAFT — not released");
+        MvcResult docx = mockMvc.perform(get("/api/v1/reports/{id}/export?format=docx", reportId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk()).andReturn();
+        byte[] docxBytes = docx.getResponse().getContentAsByteArray();
+        assertThat(docxBytes[0]).isEqualTo((byte) 'P');
+        assertThat(docxBytes[1]).isEqualTo((byte) 'K');
+        MvcResult pdf = mockMvc.perform(get("/api/v1/reports/{id}/export?format=pdf", reportId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk()).andReturn();
+        assertThat(new String(pdf.getResponse().getContentAsByteArray(), 0, 8,
+                StandardCharsets.ISO_8859_1)).startsWith("%PDF-1.4");
+    }
+
+    @Test
+    @Order(19)
+    void releaseIsBlockedWhileNeedsVerificationFindingsRemain() throws Exception {
+        // The capped audit's own RF-10 indicator was never reviewed (FR-REV-4).
+        MvcResult generated = mockMvc.perform(post("/api/v1/audits/{id}/reports", cappedAuditId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DRAFT"))
+                .andReturn();
+        String cappedReportId = objectMapper.readTree(generated.getResponse().getContentAsString())
+                .get("id").asText();
+        mockMvc.perform(post("/api/v1/reports/{id}/release", cappedReportId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.title").value("needs-verification-open"));
+    }
+
+    @Test
+    @Order(20)
+    void deltaComparesTwoAuditsOfTheSameJournal() throws Exception {
+        // FR-RPT-7: the full audit vs the page-capped audit of the same journal.
+        JsonNode delta = getJson("/api/v1/audits/" + auditId + "/delta/" + cappedAuditId);
+        assertThat(delta.get("scores").size()).isEqualTo(5);
+        assertThat(delta.get("gateway").size()).isEqualTo(6);
+        assertThat(delta.get("resolvedCodes").isArray()).isTrue();
+        assertThat(delta.get("newCodes").isArray()).isTrue();
     }
 
     @Test

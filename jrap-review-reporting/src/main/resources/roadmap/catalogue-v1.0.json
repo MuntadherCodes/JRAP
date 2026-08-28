@@ -1,0 +1,74 @@
+{
+  "version": "1.0",
+  "_comment": "SRS §5.4 action catalogue: each detector maps to remediation actions with measurable completion criteria; phases are months 0-3 / 3-6 / 6-12; tags must-fix vs strengthens. Mirrors the golden audit's Part 5 structure.",
+  "byCode": {
+    "RF-01": [
+      {"id": "volume-editorial-calendar", "title": "Adopt and publish an editorial calendar", "description": "Commit to a fixed issues-per-year schedule with per-issue article targets and publish it on the journal site; investigate and document the cause of the historical volume anomaly.", "phase": "P0_3", "tag": "MUST_FIX", "completion": "Two consecutive issues published within the announced window with article counts inside the announced range."}
+    ],
+    "RF-02": [
+      {"id": "citation-integrity-statement", "title": "Publish a citation-integrity statement and investigate the citation pattern", "description": "Document the cause of the citation surge/collapse (special issues, indexing changes, citation campaigns) and publish a statement; cease any practice that solicits citations.", "phase": "P0_3", "tag": "MUST_FIX", "completion": "Statement published; the next two OpenAlex year-counts show no engineered surge pattern."}
+    ],
+    "RF-03": [
+      {"id": "self-citation-policy", "title": "Adopt a self-citation policy with reviewer screening", "description": "Add a policy capping journal self-citation, instruct reviewers to flag citation padding, and monitor the share quarterly.", "phase": "P3_6", "tag": "MUST_FIX", "completion": "Journal self-citation share below the rubric threshold in the next audit."}
+    ],
+    "RF-04": [
+      {"id": "board-publishing-policy", "title": "Publish a board-member submission policy", "description": "Adopt and publish a conflict-of-interest policy for editorial-board submissions: independent handling editor, no same-day acceptance, annual cap per member.", "phase": "P0_3", "tag": "MUST_FIX", "completion": "Policy public; no same-day board acceptances in the next audit window."}
+    ],
+    "RF-05": [
+      {"id": "date-audit", "title": "Audit and correct article date metadata", "description": "Reconcile submitted/accepted/published dates across landing pages, PDFs and deposited metadata; correct impossible orderings and republish.", "phase": "P0_3", "tag": "MUST_FIX", "completion": "Zero date-order anomalies across the article sample in the next audit."}
+    ],
+    "RF-06": [
+      {"id": "integrity-panel", "title": "Convene an integrity panel for authorship verification", "description": "Constitute a small integrity panel; run an author-verification mailing for the flagged articles; follow the COPE workflow where identity misuse is confirmed, including retraction and a disclosure editorial.", "phase": "P0_3", "tag": "MUST_FIX", "completion": "Every flagged article resolved: verified, corrected, or retracted per COPE, with outcomes published."}
+    ],
+    "RF-07": [
+      {"id": "plagiarism-screening", "title": "Adopt similarity screening for all submissions", "description": "Screen every new submission with a similarity tool before review; re-screen the flagged back-catalogue sample; follow the COPE retraction workflow for confirmed copied text and publish a disclosure editorial.", "phase": "P0_3", "tag": "MUST_FIX", "completion": "Screening active for all new submissions; all flagged candidates resolved with published outcomes."}
+    ],
+    "RF-08": [
+      {"id": "reference-screening", "title": "Screen reference lists for citation stacking", "description": "Add editorial screening for repeated citation of the same author or venue across unrelated articles; document reviewer guidance.", "phase": "P3_6", "tag": "MUST_FIX", "completion": "No reference-injection pattern above threshold in the next audit."}
+    ],
+    "RF-10": [
+      {"id": "indexing-claims-correction", "title": "Correct indexing and metric claims", "description": "Remove or precisely qualify every indexing/metric claim that cannot be verified against the index's own master list; link claims to the authoritative source pages.", "phase": "P0_3", "tag": "MUST_FIX", "completion": "Every indexing claim on the site resolves to a verifiable entry in the named index."}
+    ],
+    "RF-11": [
+      {"id": "solicitation-removal", "title": "Withdraw citation-solicitation practices", "description": "Remove announcements or author instructions that require citing the journal; publish a corrective note; add the prohibition to editorial policy.", "phase": "P0_3", "tag": "MUST_FIX", "completion": "No solicitation language on the site; corrective note published."}
+    ],
+    "RF-12": [
+      {"id": "scope-narrowing", "title": "Narrow and specialise the stated scope", "description": "Rewrite the aims-and-scope to the fields the journal demonstrably publishes; align section policies and keywords with the narrowed scope.", "phase": "P3_6", "tag": "STRENGTHENS", "completion": "Published scope names at most the fields represented in the last two volumes."}
+    ],
+    "RF-13": [
+      {"id": "metadata-backfill", "title": "Backfill and redeposit article metadata", "description": "Add missing affiliations, normalise author-name casing and Romanisation, and redeposit corrected metadata to Crossref/DOAJ.", "phase": "P3_6", "tag": "MUST_FIX", "completion": "Metadata-hygiene shares below rubric thresholds in the next audit; redeposits visible in Crossref."}
+    ]
+  },
+  "byCodePrefix": {
+    "IDENTITY_": [
+      {"id": "identity-record-correction", "title": "Correct identity records at the source registries", "description": "File corrections with Crossref, DOAJ and the ISSN Portal so that title, publisher and print/online ISSNs agree everywhere; verify the ISSN-L linkage.", "phase": "P0_3", "tag": "MUST_FIX", "completion": "All reachable sources agree on title, publisher and ISSN assignment in the next audit."}
+    ],
+    "CRAWL_": [
+      {"id": "site-consistency", "title": "Reconcile site inventory with OAI-PMH", "description": "Fix the mismatch between HTML article listings and the OAI-PMH endpoint (missing records or orphaned pages).", "phase": "P3_6", "tag": "STRENGTHENS", "completion": "HTML and OAI article counts agree within tolerance."}
+    ],
+    "EXT_": [
+      {"id": "deposited-metadata-fix", "title": "Fix deposited metadata that contradicts the site", "description": "Correct Crossref/OpenAlex records whose titles, author counts or dates disagree with the published pages.", "phase": "P3_6", "tag": "MUST_FIX", "completion": "Sampled DOI reconciliation shows zero mismatches in the next audit."}
+    ]
+  },
+  "gateway": {
+    "G1": {"id": "publish-review-policy", "title": "Publish the peer-review policy", "description": "Publish a named peer-review model (type, reviewer count, typical turnaround) on a dedicated public page.", "phase": "P0_3", "tag": "MUST_FIX", "completion": "Public peer-review page states model, reviewers per paper and turnaround."},
+    "G2": {"id": "regularise-schedule", "title": "Regularise the publication schedule", "description": "Publish and keep an issue schedule; batch accepted articles so issues meet the minimum article count.", "phase": "P0_3", "tag": "MUST_FIX", "completion": "Trailing three years show no gap year and issues at or above the minimum size."},
+    "G3": {"id": "issn-registration", "title": "Resolve ISSN registration and consistency", "description": "Ensure both print and online ISSNs are registered to this journal and used consistently on the site and in deposited metadata.", "phase": "P0_3", "tag": "MUST_FIX", "completion": "ISSN Portal record matches the site and all deposits."},
+    "G4": {"id": "english-metadata", "title": "Provide English titles and abstracts throughout", "description": "Add English titles and abstracts for every article, including the back catalogue.", "phase": "P3_6", "tag": "MUST_FIX", "completion": "English title and abstract present for every sampled article."},
+    "G5": {"id": "publish-ethics", "title": "Publish the publication-ethics statement", "description": "Publish a COPE-aligned malpractice and ethics statement on a dedicated public page.", "phase": "P0_3", "tag": "MUST_FIX", "completion": "Public ethics page aligned with COPE core practices."},
+    "G6": {"id": "romanise-references", "title": "Romanise reference lists", "description": "Require Roman-script references (with transliteration where needed) in author guidelines and enforce at copy-editing.", "phase": "P3_6", "tag": "MUST_FIX", "completion": "Roman-script reference share above the rubric bar in the next audit."}
+  },
+  "scores": {
+    "standing": [
+      {"id": "reference-deposit", "title": "Enable Crossref reference deposit and DOI hygiene", "description": "Deposit full reference lists with Crossref and register DOIs for the back catalogue so citation tracking can accrue.", "phase": "P3_6", "tag": "STRENGTHENS", "completion": "References visible in Crossref for all new issues; back-catalogue DOIs resolve."},
+      {"id": "board-internationalisation", "title": "Internationalise the editorial board", "description": "Recruit active researchers from outside the dominant country/institution, with verifiable profiles, and publish per-member affiliations.", "phase": "P6_12", "tag": "STRENGTHENS", "completion": "Board country HHI below the rubric threshold."},
+      {"id": "thematic-issues", "title": "Commission international thematic issues", "description": "Invite guest-edited thematic issues with international contributors to raise visibility and citation standing.", "phase": "P6_12", "tag": "STRENGTHENS", "completion": "At least one thematic issue with majority-international authorship published."}
+    ],
+    "availability": [
+      {"id": "preservation-enrolment", "title": "Enrol in a preservation network (PKP PN / CLOCKSS)", "description": "Enable PKP Preservation Network or CLOCKSS so content survives platform failure; declare the arrangement in DOAJ.", "phase": "P3_6", "tag": "MUST_FIX", "completion": "Preservation arrangement live and declared in the DOAJ record."}
+    ],
+    "content": [
+      {"id": "affiliation-completeness", "title": "Require complete author affiliations", "description": "Make institution and country mandatory at submission; backfill missing affiliations in the catalogue.", "phase": "P3_6", "tag": "MUST_FIX", "completion": "Missing-affiliation share below the rubric threshold."}
+    ]
+  }
+}

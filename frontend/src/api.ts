@@ -279,6 +279,79 @@ export interface SnapshotTextDto {
   text: string | null;
 }
 
+export interface ReportSentenceDto {
+  id: string;
+  kind: 'FACTUAL' | 'STRUCTURAL';
+  text: string;
+  findingIds: string[];
+  evidenceItemIds: string[];
+  guard: 'PASS' | 'FAIL' | null;
+}
+
+export interface ReportSectionDto {
+  id: string;
+  title: string;
+  sentences: ReportSentenceDto[];
+}
+
+export interface RoadmapActionDto {
+  id: string;
+  title: string;
+  description: string;
+  phase: 'P0_3' | 'P3_6' | 'P6_12';
+  tag: 'MUST_FIX' | 'STRENGTHENS';
+  completionCriterion: string;
+  findingIds: string[];
+}
+
+export interface ReportExclusionDto {
+  findingId: string;
+  code: string;
+  title: string;
+  reason: string;
+}
+
+export interface ReportSummaryDto {
+  id: string;
+  version: number;
+  status: 'DRAFT' | 'RELEASED';
+  verdict: string;
+  guardPassed: boolean;
+  contentHash: string | null;
+  narrativePromptVersion: string | null;
+  createdAt: string;
+  releasedAt: string | null;
+}
+
+export interface ReportDto extends ReportSummaryDto {
+  auditId: string;
+  sections: ReportSectionDto[];
+  roadmap: RoadmapActionDto[];
+  exclusions: ReportExclusionDto[];
+  guardReport: string;
+}
+
+export interface ScoreDeltaDto {
+  category: string;
+  previous: number | null;
+  current: number | null;
+}
+
+export interface GatewayDeltaDto {
+  code: string;
+  previous: string | null;
+  current: string | null;
+}
+
+export interface DeltaDto {
+  auditId: string;
+  priorAuditId: string;
+  scores: ScoreDeltaDto[];
+  gateway: GatewayDeltaDto[];
+  resolvedCodes: string[];
+  newCodes: string[];
+}
+
 export const api = {
   register: (body: { organisationName: string; email: string; password: string; displayName: string }) =>
     request<{ organisationId: string }>('/api/v1/auth/register', { method: 'POST', body: JSON.stringify(body) }),
@@ -367,4 +440,32 @@ export const api = {
   ) => request<void>(`/api/v1/articles/${id}/correct`, { method: 'POST', body: JSON.stringify(body) }),
   confirmArticle: (id: string) => request<void>(`/api/v1/articles/${id}/confirm`, { method: 'POST' }),
   snapshotText: (id: string) => request<SnapshotTextDto>(`/api/v1/snapshots/${id}/text`),
+  generateReport: (auditId: string) =>
+    request<ReportDto>(`/api/v1/audits/${auditId}/reports`, { method: 'POST' }),
+  listReports: (auditId: string) => request<ReportSummaryDto[]>(`/api/v1/audits/${auditId}/reports`),
+  getReport: (id: string) => request<ReportDto>(`/api/v1/reports/${id}`),
+  editReportSentence: (id: string, sentenceId: string, text?: string, remove?: boolean) =>
+    request<ReportDto>(`/api/v1/reports/${id}/sentences`, {
+      method: 'POST',
+      body: JSON.stringify({ sentenceId, text, remove }),
+    }),
+  releaseReport: (id: string) => request<ReportDto>(`/api/v1/reports/${id}/release`, { method: 'POST' }),
+  auditDelta: (auditId: string, priorAuditId: string) =>
+    request<DeltaDto>(`/api/v1/audits/${auditId}/delta/${priorAuditId}`),
+  exportReport: async (id: string, format: 'html' | 'docx' | 'pdf') => {
+    const token = session().accessToken;
+    const response = await fetch(`/api/v1/reports/${id}/export?format=${format}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) throw new Error(`Export failed (${response.status})`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `jrap-report.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  },
 };
