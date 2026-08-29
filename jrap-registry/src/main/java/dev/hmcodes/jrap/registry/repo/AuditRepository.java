@@ -24,4 +24,7 @@ public interface AuditRepository extends JpaRepository<Audit, UUID> {
 
     @Transactional(readOnly = true)
     Optional<Audit> findFirstByJournalIdOrderByCreatedAtDesc(UUID journalId);
+
+    @Transactional(readOnly = true)
+    List<Audit> findByStatusAndFinishedAtAfter(Audit.Status status, java.time.Instant after);
 }

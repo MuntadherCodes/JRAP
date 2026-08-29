@@ -81,6 +81,9 @@ export default function ReportView() {
           <button className="secondary" onClick={() => api.exportReport(report.id, 'html')}>HTML</button>
           <button className="secondary" onClick={() => api.exportReport(report.id, 'docx')}>DOCX</button>
           <button className="secondary" onClick={() => api.exportReport(report.id, 'pdf')}>PDF</button>
+          <button className="secondary" onClick={() => act(() => api.adoptRoadmap(report.id))}>
+            {t('adoptRoadmap')}
+          </button>
         </div>
       </div>
       {error && <p className="error">{error}</p>}

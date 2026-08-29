@@ -352,6 +352,94 @@ export interface DeltaDto {
   newCodes: string[];
 }
 
+export interface ApiKeyDto {
+  id: string;
+  name: string;
+  secret?: string;
+  prefix: string;
+  scopes: string;
+  rateLimitPerMinute: number;
+  createdAt?: string;
+  lastUsedAt?: string | null;
+  revokedAt?: string | null;
+}
+
+export interface WebhookDto {
+  id: string;
+  url: string;
+  secret: string | null;
+  events: string;
+  active: boolean;
+  lastStatus: number | null;
+  lastDeliveryAt: string | null;
+}
+
+export interface ActionItemDto {
+  id: string;
+  journalId: string;
+  catalogueActionId: string;
+  title: string;
+  description: string;
+  phase: string;
+  tag: string;
+  completionCriterion: string;
+  assigneeUserId: string | null;
+  dueDate: string | null;
+  status: 'OPEN' | 'IN_PROGRESS' | 'DONE';
+  completionNote: string | null;
+}
+
+export interface ScheduleDto {
+  id: string;
+  cadence: string;
+  nextRunAt: string;
+  notifyEmail: boolean;
+  active: boolean;
+  lastAuditId: string | null;
+}
+
+export interface ScorePointDto {
+  auditId: string;
+  finishedAt: string;
+  scores: Record<string, number>;
+  mean: number;
+}
+
+export interface JournalDashboardDto {
+  journalId: string;
+  title: string | null;
+  scoreHistory: ScorePointDto[];
+  latestGateway: { code: string; outcome: string; summary: string }[];
+  gauges: Record<string, number | null>;
+  citationsByYear: { byYear: Record<string, number> };
+  articlesByYear: { byYear: Record<string, number> };
+  actions: ActionItemDto[];
+  schedule: ScheduleDto | null;
+}
+
+export interface PortfolioRowDto {
+  journalId: string;
+  title: string | null;
+  status: string;
+  latestAuditId: string | null;
+  lastAuditAt: string | null;
+  meanScore: number | null;
+  previousMeanScore: number | null;
+  trend: string;
+  gatewayFails: number;
+  openSevereFindings: number;
+  openActions: number;
+}
+
+export interface AdminOrgRowDto {
+  id: string;
+  name: string;
+  status: string;
+  createdAt: string;
+  maxJournals: number;
+  journals: number;
+}
+
 export const api = {
   register: (body: { organisationName: string; email: string; password: string; displayName: string }) =>
     request<{ organisationId: string }>('/api/v1/auth/register', { method: 'POST', body: JSON.stringify(body) }),
@@ -452,6 +540,48 @@ export const api = {
   releaseReport: (id: string) => request<ReportDto>(`/api/v1/reports/${id}/release`, { method: 'POST' }),
   auditDelta: (auditId: string, priorAuditId: string) =>
     request<DeltaDto>(`/api/v1/audits/${auditId}/delta/${priorAuditId}`),
+  createApiKey: (body: { name: string; scopes?: string[]; rateLimitPerMinute?: number }) =>
+    request<ApiKeyDto>('/api/v1/api-keys', { method: 'POST', body: JSON.stringify(body) }),
+  listApiKeys: () => request<ApiKeyDto[]>('/api/v1/api-keys'),
+  revokeApiKey: (id: string) => request<void>(`/api/v1/api-keys/${id}/revoke`, { method: 'POST' }),
+  createWebhook: (body: { url: string; events?: string[] }) =>
+    request<WebhookDto>('/api/v1/webhooks', { method: 'POST', body: JSON.stringify(body) }),
+  listWebhooks: () => request<WebhookDto[]>('/api/v1/webhooks'),
+  deactivateWebhook: (id: string) =>
+    request<void>(`/api/v1/webhooks/${id}/deactivate`, { method: 'POST' }),
+  journalDashboard: (journalId: string) =>
+    request<JournalDashboardDto>(`/api/v1/journals/${journalId}/dashboard`),
+  portfolio: () => request<PortfolioRowDto[]>('/api/v1/organisations/current/dashboard'),
+  adoptRoadmap: (reportId: string) =>
+    request<{ created: number }>(`/api/v1/reports/${reportId}/adopt-roadmap`, { method: 'POST' }),
+  journalActions: (journalId: string) =>
+    request<ActionItemDto[]>(`/api/v1/journals/${journalId}/actions`),
+  assignAction: (id: string, body: { assigneeUserId?: string; dueDate?: string }) =>
+    request<void>(`/api/v1/actions/${id}/assign`, { method: 'POST', body: JSON.stringify(body) }),
+  setActionStatus: (id: string, body: { status: string; note?: string }) =>
+    request<void>(`/api/v1/actions/${id}/status`, { method: 'POST', body: JSON.stringify(body) }),
+  upsertSchedule: (journalId: string, body: { cadence: string; firstRunAt?: string; notifyEmail?: boolean }) =>
+    request<ScheduleDto>(`/api/v1/journals/${journalId}/schedule`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  deactivateSchedule: (journalId: string) =>
+    request<void>(`/api/v1/journals/${journalId}/schedule/deactivate`, { method: 'POST' }),
+  adminOrganisations: () => request<AdminOrgRowDto[]>('/api/v1/admin/organisations'),
+  adminSetQuota: (orgId: string, maxJournals: number) =>
+    request<void>(`/api/v1/admin/organisations/${orgId}/quota`, {
+      method: 'PATCH',
+      body: JSON.stringify({ maxJournals }),
+    }),
+  adminSetOrgStatus: (orgId: string, status: string) =>
+    request<void>(`/api/v1/admin/organisations/${orgId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+  adminSettings: () => request<Record<string, string>>('/api/v1/admin/settings'),
+  adminPutSetting: (key: string, value: string) =>
+    request<void>('/api/v1/admin/settings', { method: 'PUT', body: JSON.stringify({ key, value }) }),
+  adminStatus: () => request<Record<string, unknown>>('/api/v1/admin/status'),
   exportReport: async (id: string, format: 'html' | 'docx' | 'pdf') => {
     const token = session().accessToken;
     const response = await fetch(`/api/v1/reports/${id}/export?format=${format}`, {

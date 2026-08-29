@@ -20,4 +20,7 @@ public interface FindingRepository extends JpaRepository<Finding, UUID> {
 
     @Transactional(readOnly = true)
     List<Finding> findByAuditId(UUID auditId);
+
+    @Transactional(readOnly = true)
+    List<Finding> findBySeverityAndCreatedAtAfter(Finding.Severity severity, java.time.Instant after);
 }

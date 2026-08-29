@@ -19,4 +19,7 @@ public interface ApiRecordRepository extends JpaRepository<ApiRecord, UUID> {
     List<ApiRecord> findFresh(@Param("source") String source,
                               @Param("requestKey") String requestKey,
                               @Param("now") Instant now);
+
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    java.util.Optional<ApiRecord> findFirstBySourceOrderByRetrievedAtDesc(String source);
 }

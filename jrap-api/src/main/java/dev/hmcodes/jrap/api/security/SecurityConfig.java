@@ -30,7 +30,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter)
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter,
+                                                   ApiKeyAuthenticationFilter apiKeyFilter)
             throws Exception {
         http
                 .csrf(csrf -> csrf.disable()) // stateless bearer-token API: no cookie-based session to forge
@@ -55,7 +56,8 @@ public class SecurityConfig {
                             "{\"type\":\"about:blank\",\"title\":\"Unauthorized\",\"status\":401," +
                             "\"detail\":\"Authentication is required\"}");
                 }))
-                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(apiKeyFilter, JwtAuthenticationFilter.class);
         return http.build();
     }
 
@@ -63,6 +65,15 @@ public class SecurityConfig {
     @Bean
     public org.springframework.boot.web.servlet.FilterRegistrationBean<JwtAuthenticationFilter>
             jwtFilterRegistration(JwtAuthenticationFilter filter) {
+        var registration = new org.springframework.boot.web.servlet.FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    /** Same as the JWT filter: security-chain only, no container-level auto-registration. */
+    @Bean
+    public org.springframework.boot.web.servlet.FilterRegistrationBean<ApiKeyAuthenticationFilter>
+            apiKeyFilterRegistration(ApiKeyAuthenticationFilter filter) {
         var registration = new org.springframework.boot.web.servlet.FilterRegistrationBean<>(filter);
         registration.setEnabled(false);
         return registration;

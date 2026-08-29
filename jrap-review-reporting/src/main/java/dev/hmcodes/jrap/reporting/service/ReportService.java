@@ -23,6 +23,7 @@ import dev.hmcodes.jrap.reporting.model.ReportContent.Section;
 import dev.hmcodes.jrap.reporting.model.ReportContent.Sentence;
 import dev.hmcodes.jrap.reporting.repo.ReportRepository;
 import dev.hmcodes.jrap.review.service.ReviewService;
+import dev.hmcodes.jrap.tenancy.service.SecurityAuditService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,6 +60,7 @@ public class ReportService {
     private final EvidenceItemRepository evidenceItems;
     private final GatewayCheckRepository gatewayChecks;
     private final CsabScoreRepository scores;
+    private final SecurityAuditService securityAudit;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -66,6 +68,7 @@ public class ReportService {
                          ReportBuilder builder, DraftingService drafting, ReviewService reviewService,
                          EvidenceLinkRepository evidenceLinks, EvidenceItemRepository evidenceItems,
                          GatewayCheckRepository gatewayChecks, CsabScoreRepository scores,
+                         SecurityAuditService securityAudit,
                          ObjectMapper objectMapper, Clock clock) {
         this.reports = reports;
         this.audits = audits;
@@ -77,6 +80,7 @@ public class ReportService {
         this.evidenceItems = evidenceItems;
         this.gatewayChecks = gatewayChecks;
         this.scores = scores;
+        this.securityAudit = securityAudit;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -185,6 +189,11 @@ public class ReportService {
                 + report.getRoadmap() + "\n" + report.getExclusions());
         report.release(hash, actor.userId(), clock.instant());
         audit.setStage(Audit.Stage.RELEASE);
+        // FR-AUTH-5: report release is a security-relevant event.
+        securityAudit.record("report.released", report.getOrganisationId(), actor.userId(),
+                actor.email(), java.util.Map.of("reportId", report.getId().toString(),
+                        "auditId", report.getAuditId().toString(),
+                        "contentHash", hash), null);
         return report;
     }
 

@@ -19,6 +19,11 @@ public class RecordingEmailSender implements EmailSender {
         sent.add(new Sent(toEmail, subject, body));
     }
 
+    public boolean hasMessage(String to, String subjectContains) {
+        return sent.stream().anyMatch(m -> m.to().equals(to)
+                && m.subject().contains(subjectContains));
+    }
+
     public String lastTokenFor(String email) {
         Pattern pattern = Pattern.compile("token=([A-Za-z0-9_-]+)");
         for (int i = sent.size() - 1; i >= 0; i--) {

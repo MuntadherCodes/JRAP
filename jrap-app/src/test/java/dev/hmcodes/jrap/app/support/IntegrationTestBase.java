@@ -41,5 +41,8 @@ public abstract class IntegrationTestBase {
         // pipeline drive AuditRunner.runOnce() explicitly, and a 5-second poll from a
         // sibling context would race them for PENDING/RUNNING audits in the shared DB.
         registry.add("jrap.crawl.poll-interval-ms", () -> "3600000");
+        // Same for the Phase-8 platform pollers: tests drive runOnce() explicitly.
+        registry.add("jrap.platform.webhook-poll-ms", () -> "3600000");
+        registry.add("jrap.platform.schedule-poll-ms", () -> "3600000");
     }
 }

@@ -35,7 +35,9 @@ import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -61,6 +63,7 @@ class CrawlPipelineIntegrationTest extends IntegrationTestBase {
         registry.add("jrap.integrations.doaj-base-url", STUB::baseUrl);
         registry.add("jrap.integrations.issn-portal-base-url", STUB::baseUrl);
         registry.add("jrap.integrations.per-host-min-interval-ms", () -> "0");
+        registry.add("jrap.admin.emails", () -> "platform-admin@jrap.example");
         String snapshotDir = Files.createTempDirectory("jrap-snapshots-test").toString();
         registry.add("jrap.snapshots.root-dir", () -> snapshotDir);
     }
@@ -70,6 +73,8 @@ class CrawlPipelineIntegrationTest extends IntegrationTestBase {
     @Autowired RecordingEmailSender emails;
     @Autowired AuditRunner runner;
     @Autowired SnapshotStore snapshotStore;
+    @Autowired dev.hmcodes.jrap.platform.ScheduledAuditService scheduledAudits;
+    @Autowired dev.hmcodes.jrap.platform.WebhookDispatcher webhookDispatcher;
 
     private String ownerToken;
     private String journalId;
@@ -665,6 +670,330 @@ class CrawlPipelineIntegrationTest extends IntegrationTestBase {
         assertThat(delta.get("gateway").size()).isEqualTo(6);
         assertThat(delta.get("resolvedCodes").isArray()).isTrue();
         assertThat(delta.get("newCodes").isArray()).isTrue();
+    }
+
+    @Test
+    @Order(21)
+    void apiKeysAuthenticateScopeAndRateLimit() throws Exception {
+        // FR-AUTH-4: create a write-scoped key; the secret is shown exactly once.
+        MvcResult created = mockMvc.perform(post("/api/v1/api-keys")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"ci\",\"scopes\":[\"read\",\"write\"]}"))
+                .andExpect(status().isCreated()).andReturn();
+        String secret = objectMapper.readTree(created.getResponse().getContentAsString())
+                .get("secret").asText();
+        String keyId = objectMapper.readTree(created.getResponse().getContentAsString())
+                .get("id").asText();
+        assertThat(secret).startsWith("jrap_");
+
+        mockMvc.perform(get("/api/v1/journals").header("X-Api-Key", secret))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(journalId));
+
+        // Read-only key: mutating requests are refused before any work happens.
+        MvcResult readOnly = mockMvc.perform(post("/api/v1/api-keys")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"reader\",\"scopes\":[\"read\"],\"rateLimitPerMinute\":1}"))
+                .andExpect(status().isCreated()).andReturn();
+        String readOnlySecret = objectMapper.readTree(readOnly.getResponse().getContentAsString())
+                .get("secret").asText();
+        mockMvc.perform(post("/api/v1/journals").header("X-Api-Key", readOnlySecret)
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden());
+
+        // Per-key rate limit (1/min): the first request consumes the window, the next 429s.
+        mockMvc.perform(get("/api/v1/journals").header("X-Api-Key", readOnlySecret))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/journals").header("X-Api-Key", readOnlySecret))
+                .andExpect(status().isTooManyRequests());
+
+        // Revoked keys stop authenticating.
+        mockMvc.perform(post("/api/v1/api-keys/{id}/revoke", keyId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/journals").header("X-Api-Key", secret))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @Order(22)
+    void openApiDocumentIsPublishedAsOpenApi31() throws Exception {
+        // §3.2.2 exit criterion: OpenAPI 3.1 doc published, no auth required.
+        MvcResult docs = mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode doc = objectMapper.readTree(docs.getResponse().getContentAsString());
+        assertThat(doc.get("openapi").asText()).startsWith("3.1");
+        assertThat(doc.get("paths").has("/api/v1/journals")).isTrue();
+    }
+
+    @Test
+    @Order(23)
+    void dashboardsShowPortfolioAndJournalTrends() throws Exception {
+        // FR-DASH-4: portfolio row for the journal with readiness data.
+        JsonNode portfolio = getJson("/api/v1/organisations/current/dashboard");
+        JsonNode row = null;
+        for (JsonNode candidate : portfolio) {
+            if (journalId.equals(candidate.get("journalId").asText())) {
+                row = candidate;
+            }
+        }
+        assertThat(row).isNotNull();
+        assertThat(row.get("latestAuditId").isNull()).isFalse();
+        assertThat(row.get("meanScore").isNull()).isFalse();
+        assertThat(row.get("gatewayFails").asLong()).isGreaterThanOrEqualTo(1); // G1 FAIL
+
+        // FR-DASH-1: score history across audits, gauges, citation/volume series.
+        JsonNode dashboard = getJson("/api/v1/journals/" + journalId + "/dashboard");
+        assertThat(dashboard.get("scoreHistory").size()).isGreaterThanOrEqualTo(2);
+        assertThat(dashboard.get("latestGateway").size()).isEqualTo(6);
+        assertThat(dashboard.get("gauges").has("author_country_hhi")).isTrue();
+        assertThat(dashboard.get("citationsByYear").get("byYear").size()).isGreaterThan(0);
+    }
+
+    @Test
+    @Order(24)
+    void roadmapActionsAreTrackable() throws Exception {
+        // FR-DASH-2: adopt the released report's roadmap as tracked actions.
+        MvcResult adopted = mockMvc.perform(post("/api/v1/reports/{id}/adopt-roadmap", reportId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk()).andReturn();
+        int createdCount = objectMapper.readTree(adopted.getResponse().getContentAsString())
+                .get("created").asInt();
+        assertThat(createdCount).isGreaterThan(3);
+        // Idempotent: adopting again creates nothing new.
+        mockMvc.perform(post("/api/v1/reports/{id}/adopt-roadmap", reportId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(jsonPath("$.created").value(0));
+
+        JsonNode actions = getJson("/api/v1/journals/" + journalId + "/actions");
+        String actionId = actions.get(0).get("id").asText();
+        String ownerId = objectMapper.readTree(mockMvc.perform(get("/api/v1/me")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andReturn().getResponse().getContentAsString()).get("id").asText();
+
+        mockMvc.perform(post("/api/v1/actions/{id}/assign", actionId)
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"assigneeUserId\":\"%s\",\"dueDate\":\"2026-12-01\"}"
+                                .formatted(ownerId)))
+                .andExpect(status().isOk());
+        // Completion requires a note (FR-DASH-2: evidence of completion).
+        mockMvc.perform(post("/api/v1/actions/{id}/status", actionId)
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"DONE\"}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/v1/actions/{id}/status", actionId)
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"DONE\",\"note\":\"Policy page published\"}"))
+                .andExpect(status().isOk());
+
+        JsonNode after = getJson("/api/v1/journals/" + journalId + "/actions");
+        for (JsonNode action : after) {
+            if (action.get("id").asText().equals(actionId)) {
+                assertThat(action.get("status").asText()).isEqualTo("DONE");
+                assertThat(action.get("assigneeUserId").asText()).isEqualTo(ownerId);
+            }
+        }
+    }
+
+    @Test
+    @Order(25)
+    void scheduledReauditFiresAndNotifiesWithMaterialChanges() throws Exception {
+        // FR-DASH-3: a due schedule starts an audit; completion emails the owners.
+        mockMvc.perform(put("/api/v1/journals/{id}/schedule", journalId)
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cadence\":\"QUARTERLY\",\"firstRunAt\":\"%s\"}"
+                                .formatted(java.time.Instant.now().minusSeconds(60))))
+                .andExpect(status().isOk());
+
+        assertThat(scheduledAudits.runOnce()).isEqualTo(1);
+        for (int i = 0; i < 60 && runner.runOnce(); i++) {
+            // drive the pipeline until the scheduled audit finishes
+        }
+        scheduledAudits.runOnce(); // notification pass
+
+        assertThat(emails.hasMessage("owner@crawl-test.example", "scheduled audit completed"))
+                .as("owners get the FR-DASH-3 completion email").isTrue();
+        JsonNode dashboard = getJson("/api/v1/journals/" + journalId + "/dashboard");
+        assertThat(dashboard.get("schedule").get("lastAuditId").isNull()).isFalse();
+        assertThat(java.time.Instant.parse(dashboard.get("schedule").get("nextRunAt").asText()))
+                .as("cadence advanced the next run")
+                .isAfter(java.time.Instant.now());
+    }
+
+    @Test
+    @Order(26)
+    void webhooksDeliverSignedEvents() throws Exception {
+        // §3.2.2: register a webhook, dispatch, verify the HMAC signature end-to-end.
+        List<String> received = new java.util.concurrent.CopyOnWriteArrayList<>();
+        List<String> signatures = new java.util.concurrent.CopyOnWriteArrayList<>();
+        com.sun.net.httpserver.HttpServer receiver =
+                com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress(0), 0);
+        receiver.createContext("/hook", exchange -> {
+            received.add(new String(exchange.getRequestBody().readAllBytes(),
+                    StandardCharsets.UTF_8));
+            signatures.add(exchange.getRequestHeaders().getFirst("X-JRAP-Signature"));
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        receiver.start();
+        try {
+            MvcResult created = mockMvc.perform(post("/api/v1/webhooks")
+                            .header("Authorization", "Bearer " + ownerToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"url\":\"http://localhost:%d/hook\",\"events\":[\"audit.completed\"]}"
+                                    .formatted(receiver.getAddress().getPort())))
+                    .andExpect(status().isCreated()).andReturn();
+            JsonNode webhook = objectMapper.readTree(created.getResponse().getContentAsString());
+            String webhookSecret = webhook.get("secret").asText();
+            String webhookId = webhook.get("id").asText();
+
+            int attempts = webhookDispatcher.runOnce();
+            assertThat(attempts).isGreaterThanOrEqualTo(1);
+            assertThat(received).isNotEmpty();
+            String body = received.get(0);
+            assertThat(body).contains("audit.completed");
+            assertThat(signatures.get(0)).isEqualTo("sha256="
+                    + dev.hmcodes.jrap.platform.WebhookDispatcher.hmac(webhookSecret, body));
+
+            JsonNode deliveries = getJson("/api/v1/webhooks/" + webhookId + "/deliveries");
+            assertThat(deliveries.size()).isGreaterThanOrEqualTo(1);
+            assertThat(deliveries.get(0).get("ok").asBoolean()).isTrue();
+
+            // Watermark advanced: a second round delivers nothing new.
+            assertThat(webhookDispatcher.runOnce()).isZero();
+        } finally {
+            receiver.stop(0);
+        }
+    }
+
+    @Test
+    @Order(27)
+    void adminConsoleManagesTenantsSettingsAndStatus() throws Exception {
+        // Non-admins are refused (FR-ADM-1).
+        mockMvc.perform(get("/api/v1/admin/organisations")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isForbidden());
+
+        register("Platform Ops", "platform-admin@jrap.example");
+        String adminToken = login("platform-admin@jrap.example");
+
+        JsonNode orgs = getJsonAs(adminToken, "/api/v1/admin/organisations");
+        assertThat(orgs.size()).isGreaterThanOrEqualTo(2);
+        String crawlOrgId = null;
+        for (JsonNode org : orgs) {
+            if ("Crawl Org".equals(org.get("name").asText())) {
+                crawlOrgId = org.get("id").asText();
+            }
+        }
+        assertThat(crawlOrgId).isNotNull();
+
+        // Quota management + settings roundtrip.
+        mockMvc.perform(patch("/api/v1/admin/organisations/{id}/quota", crawlOrgId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"maxJournals\":25}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/admin/settings")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"key\":\"feature.flags\",\"value\":\"{\\\"beta\\\":true}\"}"))
+                .andExpect(status().isOk());
+        JsonNode settings = getJsonAs(adminToken, "/api/v1/admin/settings");
+        assertThat(settings.get("feature.flags").asText()).contains("beta");
+
+        // FR-ADM-2: source-health status page data.
+        JsonNode status = getJsonAs(adminToken, "/api/v1/admin/status");
+        boolean openAlexHealthy = false;
+        for (JsonNode source : status.get("sources")) {
+            if ("OPENALEX".equals(source.get("source").asText())) {
+                openAlexHealthy = source.get("everSucceeded").asBoolean();
+            }
+        }
+        assertThat(openAlexHealthy).isTrue();
+
+        // FR-JRN-3: journals with audit history cannot be transferred (snapshots write-once).
+        mockMvc.perform(post("/api/v1/admin/journals/{id}/transfer", journalId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetOrganisationId\":\"%s\"}".formatted(orgs.get(0).get("id").asText())))
+                .andExpect(status().isConflict());
+
+        // Suspension blocks login (Phase-1 archived-org guard), reactivation restores it.
+        mockMvc.perform(patch("/api/v1/admin/organisations/{id}/status", crawlOrgId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"ARCHIVED\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"owner@crawl-test.example\",\"password\":\"%s\"}"
+                                .formatted(PASSWORD)))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(patch("/api/v1/admin/organisations/{id}/status", crawlOrgId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"ACTIVE\"}"))
+                .andExpect(status().isOk());
+        assertThat(login("owner@crawl-test.example")).isNotBlank();
+    }
+
+    @Test
+    @Order(28)
+    void adminCrawlBlocklistStopsFetching() throws Exception {
+        String adminToken = login("platform-admin@jrap.example");
+        // Register a journal in the admin org and blocklist the stub host.
+        MvcResult journal = mockMvc.perform(post("/api/v1/journals")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"url\":\"%s/\"}".formatted(STUB.baseUrl())))
+                .andExpect(status().isCreated()).andReturn();
+        String blockedJournalId = objectMapper.readTree(journal.getResponse().getContentAsString())
+                .get("id").asText();
+        mockMvc.perform(put("/api/v1/admin/settings")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"key\":\"crawl.blocklist\",\"value\":\"[\\\"localhost\\\"]\"}"))
+                .andExpect(status().isOk());
+        try {
+            MvcResult audit = mockMvc.perform(post("/api/v1/journals/{id}/audits", blockedJournalId)
+                            .header("Authorization", "Bearer " + adminToken))
+                    .andExpect(status().isCreated()).andReturn();
+            String blockedAuditId = objectMapper.readTree(audit.getResponse().getContentAsString())
+                    .get("id").asText();
+            for (int i = 0; i < 60 && runner.runOnce(); i++) {
+                // drive to completion: everything should be skipped, not fetched
+            }
+            MvcResult result = mockMvc.perform(get("/api/v1/audits/{id}", blockedAuditId)
+                            .header("Authorization", "Bearer " + adminToken))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("COMPLETE"))
+                    .andExpect(jsonPath("$.pagesFetched").value(0))
+                    .andReturn();
+            assertThat(result).isNotNull();
+            MvcResult skipped = mockMvc.perform(get("/api/v1/audits/{id}/skipped", blockedAuditId)
+                            .header("Authorization", "Bearer " + adminToken))
+                    .andExpect(status().isOk()).andReturn();
+            assertThat(skipped.getResponse().getContentAsString()).contains("admin-blocklist");
+        } finally {
+            mockMvc.perform(put("/api/v1/admin/settings")
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"key\":\"crawl.blocklist\",\"value\":\"[]\"}"))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    private JsonNode getJsonAs(String token, String path) throws Exception {
+        MvcResult result = mockMvc.perform(get(path)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
     }
 
     @Test

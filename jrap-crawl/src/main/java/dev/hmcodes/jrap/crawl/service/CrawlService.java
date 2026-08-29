@@ -61,6 +61,7 @@ public class CrawlService {
     private final RobotsLite robots;
     private final PageClassifier classifier;
     private final ObjectMapper objectMapper;
+    private final dev.hmcodes.jrap.registry.platform.SettingsService settings;
     private final TransactionTemplate tx;
     private final Clock clock;
     private final int maxDepth;
@@ -68,6 +69,7 @@ public class CrawlService {
     public CrawlService(CrawlTaskRepository tasks, SnapshotRepository snapshots, AuditRepository audits,
                         SnapshotStore store, PoliteHttpFetcher fetcher, RobotsLite robots,
                         PageClassifier classifier, ObjectMapper objectMapper,
+                        dev.hmcodes.jrap.registry.platform.SettingsService settings,
                         PlatformTransactionManager transactionManager, Clock clock,
                         @Value("${jrap.crawl.max-depth:10}") int maxDepth) {
         this.tasks = tasks;
@@ -78,6 +80,7 @@ public class CrawlService {
         this.robots = robots;
         this.classifier = classifier;
         this.objectMapper = objectMapper;
+        this.settings = settings;
         this.tx = new TransactionTemplate(transactionManager);
         this.clock = clock;
         this.maxDepth = maxDepth;
@@ -116,6 +119,11 @@ public class CrawlService {
                 tasks.findById(task.getId()).ifPresent(t -> t.markDone(now));
                 return null;
             });
+            return;
+        }
+        if (isAdminBlocked(task.getUrl())) {
+            // FR-ADM-1: platform-level crawl blocklist (abuse control), recorded like any skip.
+            finishTask(task, audit, "admin-blocklist", true);
             return;
         }
         if (!robots.isAllowed(task.getUrl())) {
@@ -235,6 +243,24 @@ public class CrawlService {
             tx.execute(status -> tasks.save(task));
         } catch (org.springframework.dao.DataIntegrityViolationException ignored) {
             // already enqueued
+        }
+    }
+
+    private boolean isAdminBlocked(String url) {
+        try {
+            String host = java.net.URI.create(url).getHost();
+            if (host == null) {
+                return false;
+            }
+            String lower = host.toLowerCase(java.util.Locale.ROOT);
+            for (String blocked : settings.crawlBlocklist()) {
+                if (lower.equals(blocked) || lower.endsWith("." + blocked)) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
         }
     }
 

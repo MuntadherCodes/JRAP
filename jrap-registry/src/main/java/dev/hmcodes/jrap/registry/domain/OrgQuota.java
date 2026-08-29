@@ -37,4 +37,9 @@ public class OrgQuota {
     public UUID getOrganisationId() { return organisationId; }
     public int getMaxJournals() { return maxJournals; }
     public Instant getUpdatedAt() { return updatedAt; }
+
+    public void setMaxJournals(int maxJournals, Instant when) {
+        this.maxJournals = maxJournals;
+        this.updatedAt = when;
+    }
 }

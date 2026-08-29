@@ -46,6 +46,7 @@ public class AnalyseStageHandler implements AuditStageHandler {
     private final FindingRepository findings;
     private final AuditRepository audits;
     private final RubricLoader rubricLoader;
+    private final dev.hmcodes.jrap.registry.platform.SettingsService settings;
     private final TenantTx tenantTx;
     private final ObjectMapper objectMapper;
 
@@ -53,7 +54,9 @@ public class AnalyseStageHandler implements AuditStageHandler {
                                GatewayCheckService gatewayCheckService, RedFlagService redFlagService,
                                CsabScoringService scoringService, GatewayCheckRepository gatewayChecks,
                                FindingRepository findings, AuditRepository audits,
-                               RubricLoader rubricLoader, TenantTx tenantTx, ObjectMapper objectMapper) {
+                               RubricLoader rubricLoader,
+                               dev.hmcodes.jrap.registry.platform.SettingsService settings,
+                               TenantTx tenantTx, ObjectMapper objectMapper) {
         this.dataLoader = dataLoader;
         this.metricsService = metricsService;
         this.gatewayCheckService = gatewayCheckService;
@@ -63,6 +66,7 @@ public class AnalyseStageHandler implements AuditStageHandler {
         this.findings = findings;
         this.audits = audits;
         this.rubricLoader = rubricLoader;
+        this.settings = settings;
         this.tenantTx = tenantTx;
         this.objectMapper = objectMapper;
     }
@@ -77,7 +81,10 @@ public class AnalyseStageHandler implements AuditStageHandler {
         if (gatewayChecks.existsByAuditId(audit.getId())) {
             return; // analysis already ran for this audit (resume)
         }
-        Rubric rubric = rubricLoader.active();
+        // FR-ADM-1: a platform admin can roll the active rubric version at runtime.
+        Rubric rubric = settings.rubricVersionOverride()
+                .map(rubricLoader::load)
+                .orElseGet(rubricLoader::active);
         freezeVersions(audit, rubric);
 
         AnalysisData data = dataLoader.load(audit, journal);

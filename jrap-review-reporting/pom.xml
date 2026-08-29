@@ -38,6 +38,11 @@
     </dependency>
     <dependency>
       <groupId>dev.hmcodes.jrap</groupId>
+      <artifactId>jrap-integrations</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>dev.hmcodes.jrap</groupId>
       <artifactId>jrap-ai-gateway</artifactId>
       <version>${project.version}</version>
     </dependency>

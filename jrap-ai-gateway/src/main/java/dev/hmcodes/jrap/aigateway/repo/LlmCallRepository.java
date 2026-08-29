@@ -20,4 +20,7 @@ public interface LlmCallRepository extends JpaRepository<LlmCall, UUID> {
 
     @Transactional(readOnly = true)
     long countByAuditId(UUID auditId);
+
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    java.util.Optional<LlmCall> findFirstByOrderByCreatedAtDesc();
 }
