@@ -329,11 +329,29 @@ public class CrawlService {
         return false;
     }
 
+    /**
+     * URLs that consume page-cap budget without carrying audit signal, so they are never
+     * enqueued. Grown from live crawls: OJS renders a setLocale link per language and a
+     * citation-export link per style on EVERY page, which together starved a 3000-page
+     * cap on a production OJS 3.4 site before the crawl reached the archive. Substring
+     * checks only — deterministic and cheap; anything ambiguous is left to the classifier.
+     */
     private static boolean looksLikeNoise(String url) {
         String lower = url.toLowerCase(Locale.ROOT);
         return lower.contains("/login") || lower.contains("/user/register")
-                || lower.contains("/search?") || lower.contains("logout")
-                || lower.contains("mailto:");
+                || lower.contains("/search?") || lower.contains("/search/")
+                || lower.contains("logout") || lower.contains("mailto:")
+                // OJS utility endpoints (observed wasting cap on live sites):
+                || lower.contains("/user/setlocale")          // language switcher, one link per locale
+                || lower.contains("/user/profile")
+                || lower.contains("/$$$call$$$/")             // OJS AJAX component handlers
+                || lower.contains("/citationstylelanguage/")  // per-style citation exports
+                || lower.contains("/rt/capturecite")          // OJS 2.x reading tools
+                || lower.contains("/rt/printerfriendly")
+                || lower.contains("/rt/emailcolleague")
+                || lower.endsWith("/notification") || lower.contains("/notification/")
+                || lower.endsWith("/oai") || lower.contains("/oai?") || lower.contains("?verb=")
+                || lower.contains("/gateway/");               // OJS plugin gateway (LOCKSS etc.)
     }
 
     private static String hostOf(String url) {

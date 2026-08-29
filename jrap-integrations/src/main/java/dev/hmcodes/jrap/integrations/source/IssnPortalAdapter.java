@@ -14,8 +14,11 @@ import java.util.Map;
 
 /**
  * ISSN Portal adapter (FR-INT-4). The portal frequently blocks automated access; a
- * blocked or unparseable response degrades to UNAVAILABLE — the analyst-entered
- * manual-evidence fallback arrives with FR-INT-7 in Phase 6.
+ * blocked or unparseable response degrades to UNAVAILABLE, and the analyst-entered
+ * manual-evidence fallback (FR-INT-7) covers the gap. An optional per-source
+ * User-Agent override ({@code jrap.integrations.issn-portal-user-agent}) lets an
+ * operator try a browser profile against the portal's bot filter — a config decision,
+ * left empty by default so JRAP identifies itself honestly everywhere else.
  */
 @Component
 public class IssnPortalAdapter {
@@ -25,18 +28,23 @@ public class IssnPortalAdapter {
     private final ApiRecordService apiRecords;
     private final ObjectMapper objectMapper;
     private final String baseUrl;
+    private final Map<String, String> requestHeaders;
 
     public IssnPortalAdapter(ApiRecordService apiRecords, ObjectMapper objectMapper,
-                             @Value("${jrap.integrations.issn-portal-base-url:https://portal.issn.org}") String baseUrl) {
+                             @Value("${jrap.integrations.issn-portal-base-url:https://portal.issn.org}") String baseUrl,
+                             @Value("${jrap.integrations.issn-portal-user-agent:}") String userAgentOverride) {
         this.apiRecords = apiRecords;
         this.objectMapper = objectMapper;
         this.baseUrl = baseUrl;
+        this.requestHeaders = userAgentOverride == null || userAgentOverride.isBlank()
+                ? Map.of()
+                : Map.of("User-Agent", userAgentOverride.trim());
     }
 
     public SourceResult<JournalSourceIdentity> resolveJournalByIssn(String issn) {
         String key = "resource:" + issn;
         String url = baseUrl + "/resource/ISSN/" + issn + "?format=json";
-        return apiRecords.getOrFetch(SOURCE, key, url, Map.of())
+        return apiRecords.getOrFetch(SOURCE, key, url, requestHeaders)
                 .map(response -> toResult(response, issn))
                 .orElseGet(() -> SourceResult.unavailable(null, null));
     }

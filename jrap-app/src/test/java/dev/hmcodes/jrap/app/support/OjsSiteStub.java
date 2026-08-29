@@ -37,8 +37,22 @@ public final class OjsSiteStub {
     private final HttpServer server;
     private final Map<String, AtomicInteger> hits = new ConcurrentHashMap<>();
     private final byte[] pdfBytes;
+    private final String issn;
+    private final String title;
 
     public OjsSiteStub() {
+        this(ISSN, TITLE);
+    }
+
+    /**
+     * A stub with its own ISSN/title. The api_record cache is global across test classes
+     * in the shared database, so any class whose source stubs must answer differently
+     * (e.g. the AC-7 degradation test) MUST use a distinct ISSN or it will read the
+     * cached responses recorded from another class's stub.
+     */
+    public OjsSiteStub(String issn, String title) {
+        this.issn = issn;
+        this.title = title;
         try {
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         } catch (IOException e) {
@@ -80,7 +94,7 @@ public final class OjsSiteStub {
                     <a href="/issue/archive">Archives</a>
                     <a href="/announcement">Announcements</a>
                     <a href="/private/secret">Internal</a>
-                    </body>""".formatted(TITLE, OJS_GENERATOR, TITLE, ISSN));
+                    </body>""".formatted(title, OJS_GENERATOR, title, issn));
             case "/about" -> html(exchange, """
                     <head><title>About the Journal</title></head><body>About.
                     <p>A multidisciplinary scope covering medicine, engineering, physics,
@@ -164,7 +178,7 @@ public final class OjsSiteStub {
                    {"year":%d,"works_count":5,"cited_by_count":10},
                    {"year":%d,"works_count":12,"cited_by_count":90},
                    {"year":%d,"works_count":5,"cited_by_count":40}]}
-                """.formatted(TITLE, ISSN, ISSN, baseUrl(), y - 1, y - 2, y - 3, y - 4);
+                """.formatted(title, issn, issn, baseUrl(), y - 1, y - 2, y - 3, y - 4);
     }
 
     private String crossrefJson() {
@@ -172,7 +186,7 @@ public final class OjsSiteStub {
                 {"status":"ok","message":{"title":"%s","publisher":"Stub University Press",
                  "ISSN":["%s"],"issn-type":[{"value":"%s","type":"print"}],
                  "counts":{"total-dois":3}}}
-                """.formatted(TITLE, ISSN, ISSN);
+                """.formatted(title, issn, issn);
     }
 
     private String oaiXml(String query) {

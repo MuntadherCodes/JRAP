@@ -20,6 +20,12 @@ spring:
     open-in-view: false
     properties:
       hibernate.jdbc.time_zone: UTC
+  # Email: setting spring.mail.host switches EmailSender from the logging adapter to real
+  # SMTP (SmtpEmailSender). Standard Spring Boot mail properties apply, e.g.:
+  #   spring.mail.host / port / username / password
+  #   spring.mail.properties.mail.smtp.auth: true
+  #   spring.mail.properties.mail.smtp.starttls.enable: true
+  # Sender address: jrap.mail.from (falls back to spring.mail.username).
 
 management:
   endpoints:
@@ -42,6 +48,7 @@ jrap:
     crossref-base-url: https://api.crossref.org
     doaj-base-url: https://doaj.org
     issn-portal-base-url: https://portal.issn.org
+    issn-portal-user-agent: ${JRAP_ISSN_PORTAL_UA:}  # optional browser-profile UA for the portal's bot filter
     cache-ttl: P7D          # FR-INT-1 default TTL
     not-found-ttl: PT6H
     per-host-min-interval-ms: 1000   # CON-2: <= 1 req/s/host, configurable down only
@@ -52,7 +59,14 @@ jrap:
     max-depth: 10
     poll-interval-ms: 5000
   snapshots:
-    root-dir: ./data/snapshots # FileSystemSnapshotStore; S3/MinIO adapter in ops phase
+    store: filesystem          # filesystem | s3 (MinIO from docker-compose works with the s3 defaults below)
+    root-dir: ./data/snapshots # filesystem store only
+    s3:
+      endpoint: http://localhost:9010
+      bucket: jrap-snapshots   # create once: mc mb (or the MinIO console at :9011)
+      region: us-east-1
+      access-key: ${JRAP_S3_ACCESS_KEY:jrap}
+      secret-key: ${JRAP_S3_SECRET_KEY:jrap-secret}
   ai:
     provider: disabled         # disabled | anthropic (CON-4: switching is config, not code)
     base-url: https://api.anthropic.com

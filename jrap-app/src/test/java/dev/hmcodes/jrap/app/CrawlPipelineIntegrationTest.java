@@ -989,6 +989,63 @@ class CrawlPipelineIntegrationTest extends IntegrationTestBase {
         }
     }
 
+    @Test
+    @Order(29)
+    void factualSentenceSampleResolvesToStoredEvidence() throws Exception {
+        // AC-2: a sample of factual sentences from the released report — every one carries
+        // a citation, and every cited evidence item resolves to stored material (an API
+        // record, a snapshot, an uploaded payload, or a computed excerpt). Finding-only
+        // citations must resolve to an existing finding row.
+        JsonNode report = getJson("/api/v1/reports/" + reportId);
+        List<JsonNode> factual = new java.util.ArrayList<>();
+        for (JsonNode section : report.get("sections")) {
+            for (JsonNode sentence : section.get("sentences")) {
+                if ("FACTUAL".equals(sentence.get("kind").asText())) {
+                    factual.add(sentence);
+                }
+            }
+        }
+        java.util.Collections.shuffle(factual, new java.util.Random(42)); // deterministic sample
+        List<JsonNode> sample = factual.subList(0, Math.min(20, factual.size()));
+        assertThat(sample.size()).isGreaterThan(10); // the report must offer a real sample
+
+        try (Connection superuser = POSTGRES.getPostgresDatabase().getConnection();
+             PreparedStatement evidenceQuery = superuser.prepareStatement(
+                     "select api_record_id, snapshot_id, storage_key, excerpt from evidence_item where id = ?");
+             PreparedStatement findingQuery = superuser.prepareStatement(
+                     "select count(*) from finding where id = ?")) {
+            for (JsonNode sentence : sample) {
+                int citations = sentence.get("findingIds").size() + sentence.get("evidenceItemIds").size();
+                assertThat(citations)
+                        .as("factual sentence '%s' must cite something", sentence.get("id").asText())
+                        .isPositive();
+                for (JsonNode evidenceId : sentence.get("evidenceItemIds")) {
+                    evidenceQuery.setObject(1, UUID.fromString(evidenceId.asText()));
+                    try (java.sql.ResultSet row = evidenceQuery.executeQuery()) {
+                        assertThat(row.next())
+                                .as("evidence %s must exist", evidenceId.asText()).isTrue();
+                        String excerpt = row.getString("excerpt");
+                        boolean resolvable = row.getObject("api_record_id") != null
+                                || row.getObject("snapshot_id") != null
+                                || row.getString("storage_key") != null
+                                || (excerpt != null && !excerpt.isBlank());
+                        assertThat(resolvable)
+                                .as("evidence %s must resolve to stored material", evidenceId.asText())
+                                .isTrue();
+                    }
+                }
+                for (JsonNode findingId : sentence.get("findingIds")) {
+                    findingQuery.setObject(1, UUID.fromString(findingId.asText()));
+                    try (java.sql.ResultSet row = findingQuery.executeQuery()) {
+                        row.next();
+                        assertThat(row.getInt(1))
+                                .as("finding %s must exist", findingId.asText()).isEqualTo(1);
+                    }
+                }
+            }
+        }
+    }
+
     private JsonNode getJsonAs(String token, String path) throws Exception {
         MvcResult result = mockMvc.perform(get(path)
                         .header("Authorization", "Bearer " + token))

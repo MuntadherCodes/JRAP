@@ -1,6 +1,7 @@
 package dev.hmcodes.jrap.crawl.store;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -8,8 +9,9 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-/** Filesystem-backed snapshot store. Content-addressed: identical bytes share one file. */
+/** Filesystem-backed snapshot store (the default). Content-addressed: identical bytes share one file. */
 @Component
+@ConditionalOnProperty(name = "jrap.snapshots.store", havingValue = "filesystem", matchIfMissing = true)
 public class FileSystemSnapshotStore implements SnapshotStore {
 
     private final Path root;
