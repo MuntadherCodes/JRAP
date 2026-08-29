@@ -181,6 +181,110 @@ public class JournalRegistrationService {
         }
     }
 
+    /**
+     * Re-resolves the four scholarly sources for an already-registered journal and
+     * updates its identity records IN PLACE (called at the start of every audit).
+     * Heals registrations made while a source was down or before it indexed the
+     * journal — without this, a transient failure at registration time silently
+     * costs the journal its citation data (standing UNCLEAR, empty citation charts)
+     * on every audit forever. The api_record cache keeps re-resolution cheap: fresh
+     * 200s are served from cache; only stale or failed lookups actually re-fetch.
+     *
+     * <p>Conservative by design: an OK record is never degraded by a worse re-lookup
+     * (last-known-good wins; outages don't erase evidence), journal fields are only
+     * FILLED where currently null — identity contradictions are findings, never
+     * silent rewrites — and new evidence is minted only when a source produces data
+     * we have not evidenced before. Best-effort: callers must not fail the audit on
+     * a refresh error.</p>
+     */
+    public void refreshSourceIdentities(Journal journal) {
+        String issn = Issn.normalise(journal.getRegisteredInput());
+        if (issn == null) {
+            issn = journal.getIssnL();
+        }
+        if (issn == null) {
+            return; // nothing to resolve by
+        }
+
+        // --- resolution phase (network, outside any transaction) ---
+        Map<String, SourceResult<JournalSourceIdentity>> results = new LinkedHashMap<>();
+        results.put(OpenAlexAdapter.SOURCE, openAlex.resolveJournalByIssn(issn));
+        results.put(CrossrefAdapter.SOURCE, crossref.resolveJournalByIssn(issn));
+        results.put(DoajAdapter.SOURCE, doaj.resolveJournalByIssn(issn));
+        results.put(IssnPortalAdapter.SOURCE, issnPortal.resolveJournalByIssn(issn));
+
+        Instant now = clock.instant();
+        writeTx.execute(status -> {
+            Map<String, JournalIdentityRecord> existing = new LinkedHashMap<>();
+            identityRecords.findByJournalIdOrderBySource(journal.getId())
+                    .forEach(r -> existing.putIfAbsent(r.getSource(), r));
+            Journal managed = journals.findById(journal.getId()).orElse(null);
+
+            results.forEach((source, result) -> {
+                JournalIdentityRecord record = existing.get(source);
+                boolean incomingOk = result.availability() == SourceAvailability.OK;
+                if (record != null && record.getAvailability() == SourceAvailability.OK && !incomingOk) {
+                    return; // last-known-good wins over an outage or a disappeared record
+                }
+                boolean newData = incomingOk && result.apiRecordId() != null
+                        && (record == null || !result.apiRecordId().equals(record.getApiRecordId()));
+                if (record == null) {
+                    record = new JournalIdentityRecord(UUID.randomUUID(), journal.getOrganisationId(),
+                            journal.getId(), source, result.availability(), result.apiRecordId(),
+                            result.retrievedAt() != null ? result.retrievedAt() : now);
+                } else {
+                    record.refresh(result.availability(),
+                            result.apiRecordId() != null ? result.apiRecordId() : record.getApiRecordId(),
+                            result.retrievedAt() != null ? result.retrievedAt() : now);
+                }
+                if (incomingOk) {
+                    JournalSourceIdentity identity = result.data();
+                    record.setTitle(identity.title());
+                    record.setPublisher(identity.publisher());
+                    record.setCountry(identity.country());
+                    record.setIssnPrint(identity.issnPrint());
+                    record.setIssnOnline(identity.issnOnline());
+                    record.setIssnL(identity.issnL());
+                    record.setExtra(toJson(identity.extra()));
+                    healJournal(journal, source, identity);   // the in-flight pipeline copy
+                    if (managed != null) {
+                        healJournal(managed, source, identity); // the persisted row
+                    }
+                }
+                identityRecords.save(record);
+                if (newData) {
+                    evidenceItems.save(new EvidenceItem(UUID.randomUUID(), journal.getOrganisationId(),
+                            journal.getId(), EvidenceItem.Type.API_RECORD, result.apiRecordId(), source,
+                            excerptFor(source, result), record.getRetrievedAt(), now));
+                }
+            });
+            return null;
+        });
+    }
+
+    /** Null-filling only: a refresh may complete a journal's identity, never contradict it. */
+    private static void healJournal(Journal journal, String source, JournalSourceIdentity identity) {
+        if (journal.getTitle() == null) {
+            journal.setTitle(identity.title());
+        }
+        if (journal.getPublisher() == null) {
+            journal.setPublisher(identity.publisher());
+        }
+        if (journal.getCountry() == null) {
+            journal.setCountry(identity.country());
+        }
+        if (journal.getHomepageUrl() == null && identity.homepageUrl() != null) {
+            journal.setHomepageUrl(identity.homepageUrl());
+        }
+        if ("OPENALEX".equals(source) && journal.getOpenalexId() == null) {
+            journal.setOpenalexId(identity.sourceId());
+        }
+        if ("DOAJ".equals(source) && journal.getDoajId() == null && identity.sourceId() != null) {
+            journal.setDoajId(identity.sourceId());
+            journal.setInDoaj(true);
+        }
+    }
+
     private Journal persist(UUID orgId, String registeredInput, String issn,
                             Map<String, SourceResult<JournalSourceIdentity>> results,
                             SourceResult<SiteProbe.SiteIdentity> site) {

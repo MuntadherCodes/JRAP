@@ -4,27 +4,100 @@ import { Link, useParams } from 'react-router-dom';
 import { api, JournalDashboardDto, session, UserDto } from '../api';
 import { Empty, Loading, OutcomeBadge, StatusBadge } from '../components/ui';
 
-/** Tiny dependency-free bar chart. */
-function Bars({ data, color }: { data: Record<string, number>; color: string }) {
-  const entries = Object.entries(data).sort(([a], [b]) => a.localeCompare(b)).slice(-10);
-  if (entries.length === 0) return <p className="secondary">—</p>;
-  const max = Math.max(...entries.map(([, v]) => v), 1);
-  const width = entries.length * 34;
+const fmtLength = (v: number) => v.toLocaleString('en-US').length;
+
+/** Clean y-axis ticks: a 1/2/5×10ⁿ step so ~3 gridlines cover the maximum. */
+function niceTicks(max: number): { top: number; ticks: number[] } {
+  if (max <= 0) return { top: 1, ticks: [0, 1] };
+  const pow = Math.pow(10, Math.floor(Math.log10(max / 3)));
+  const step = Math.max(1, // counts: never a fractional gridline
+    [1, 2, 5, 10].map(m => m * pow).find(s => max / s <= 3.5) ?? 10 * pow);
+  const top = Math.ceil(max / step) * step;
+  const ticks: number[] = [];
+  for (let v = 0; v <= top; v += step) ticks.push(v);
+  return { top, ticks };
+}
+
+/**
+ * Dependency-free column chart for per-year counts: single series, baseline axis,
+ * hairline gridlines with clean ticks, rounded data-ends (square at the baseline),
+ * per-band hover tooltip, and the peak directly labeled. Values, labels and axis
+ * text wear text tokens — only the marks carry the series color.
+ */
+export function YearColumns({ data, color, emptyText, name }:
+    { data: Record<string, number>; color: string; emptyText: string; name: string }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const entries = Object.entries(data)
+    .map(([year, value]) => [year, Number(value)] as const)
+    .filter(([year]) => /^\d{4}$/.test(year))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-10);
+  if (entries.length === 0) return <p className="chart-empty">{emptyText}</p>;
+
+  const values = entries.map(([, v]) => v);
+  const max = Math.max(...values);
+  const { top, ticks } = niceTicks(max);
+  const band = 42;
+  const barWidth = 22; // ≤ 24px — the band's leftover stays air
+  const plotHeight = 130;
+  const padTop = 16, padBottom = 24, padRight = 6;
+  const padLeft = Math.max(40, 14 + fmtLength(top) * 6.2); // room for the widest tick label
+  const width = padLeft + entries.length * band + padRight;
+  const height = padTop + plotHeight + padBottom;
+  const baseline = padTop + plotHeight;
+  const yOf = (v: number) => baseline - (v / top) * plotHeight;
+  const peakIndex = values.indexOf(max);
+  const fmt = (v: number) => v.toLocaleString('en-US');
+
+  /** Bar path: 4px-rounded data end, square at the baseline. */
+  const bar = (i: number, v: number) => {
+    const x = padLeft + i * band + (band - barWidth) / 2;
+    const yTop = yOf(v);
+    const r = Math.min(4, Math.max(0, baseline - yTop));
+    return `M${x},${baseline} L${x},${yTop + r} Q${x},${yTop} ${x + r},${yTop} `
+        + `L${x + barWidth - r},${yTop} Q${x + barWidth},${yTop} ${x + barWidth},${yTop + r} `
+        + `L${x + barWidth},${baseline} Z`;
+  };
+
   return (
-    <svg width={width} height={90} role="img">
-      {entries.map(([year, value], i) => {
-        const h = Math.max(2, (value / max) * 60);
-        return (
-          <g key={year}>
-            <rect x={i * 34 + 4} y={70 - h} width={24} height={h} fill={color} rx={2} />
-            <text x={i * 34 + 16} y={68 - h} textAnchor="middle" fontSize={9}>{value}</text>
-            <text x={i * 34 + 16} y={84} textAnchor="middle" fontSize={9} fill="#6a6f85">
-              {year.slice(-2)}
+    <div className="chart-wrap" onMouseLeave={() => setHover(null)}>
+      <svg width={width} height={height} role="img"
+           aria-label={`${name}: ${entries.map(([y, v]) => `${y} ${fmt(v)}`).join(', ')}`}>
+        {ticks.map(tick => (
+          <g key={tick}>
+            <line x1={padLeft} x2={width - padRight} y1={yOf(tick)} y2={yOf(tick)}
+                  stroke={tick === 0 ? 'var(--border-2)' : 'var(--border)'} strokeWidth={1} />
+            <text x={padLeft - 6} y={yOf(tick) + 3} textAnchor="end" fontSize={10}
+                  fill="var(--muted)" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {fmt(tick)}
             </text>
           </g>
-        );
-      })}
-    </svg>
+        ))}
+        {entries.map(([year, value], i) => {
+          const cx = padLeft + i * band + band / 2;
+          return (
+            <g key={year}>
+              <path d={bar(i, value)} fill={color} opacity={hover === null || hover === i ? 1 : 0.45}>
+                <title>{`${year}: ${fmt(value)}`}</title>
+              </path>
+              {(i === peakIndex || hover === i) && (
+                <text x={cx} y={yOf(value) - 5} textAnchor="middle" fontSize={10.5}
+                      fill="var(--text-2)" fontWeight={600}
+                      style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {fmt(value)}
+                </text>
+              )}
+              <text x={cx} y={height - 8} textAnchor="middle" fontSize={10} fill="var(--muted)">
+                {year}
+              </text>
+              {/* hit target: the whole band, larger than the mark */}
+              <rect x={padLeft + i * band} y={padTop} width={band} height={plotHeight + padBottom}
+                    fill="transparent" onMouseEnter={() => setHover(i)} />
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
 
@@ -98,25 +171,31 @@ export default function JournalDashboard() {
         </table>
       )}
 
-      <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 40, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div>
           <h2>{t('citationsPerYear')}</h2>
-          <Bars data={dash.citationsByYear.byYear} color="#4650dd" />
+          <YearColumns data={dash.citationsByYear.byYear} color="#4353c9"
+                       emptyText={t('noCitationData')} name={t('citationsPerYear')} />
         </div>
         <div>
           <h2>{t('articlesPerYear')}</h2>
-          <Bars data={dash.articlesByYear.byYear} color="#1b7f4d" />
+          <YearColumns data={dash.articlesByYear.byYear} color="#c2571b"
+                       emptyText={t('noArticleData')} name={t('articlesPerYear')} />
         </div>
       </div>
 
       <h2>{t('diversityGauges')}</h2>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        {Object.entries(dash.gauges).map(([name, value]) => (
-          <div key={name} className="card" style={{ padding: '8px 14px' }}>
-            <div className="secondary" style={{ fontSize: 12 }}>{name}</div>
-            <strong style={{ fontSize: 20 }}>{value == null ? '—' : Number(value).toFixed(2)}</strong>
-          </div>
-        ))}
+        {Object.entries(dash.gauges)
+          .filter(([, value]) => value != null)
+          .map(([name, value]) => (
+            <div key={name} className="card" style={{ padding: '10px 16px', minWidth: 160 }}>
+              <div className="secondary" style={{ fontSize: 12 }}>
+                {t(`gauge_${name}`, { defaultValue: name.replace(/_/g, ' ') })}
+              </div>
+              <strong style={{ fontSize: 22 }}>{Number(value).toFixed(2)}</strong>
+            </div>
+          ))}
       </div>
 
       <h2>{t('gatewayChecks')}</h2>

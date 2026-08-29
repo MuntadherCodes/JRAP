@@ -33,11 +33,13 @@ public class CrawlStageHandler implements AuditStageHandler {
     private final FindingRepository findings;
     private final EvidenceItemRepository evidenceItems;
     private final EvidenceLinkRepository evidenceLinks;
+    private final dev.hmcodes.jrap.registry.service.JournalRegistrationService registration;
     private final Clock clock;
 
     public CrawlStageHandler(CrawlService crawlService, OaiHarvester oaiHarvester,
                              SnapshotRepository snapshots, FindingRepository findings,
                              EvidenceItemRepository evidenceItems, EvidenceLinkRepository evidenceLinks,
+                             dev.hmcodes.jrap.registry.service.JournalRegistrationService registration,
                              Clock clock) {
         this.crawlService = crawlService;
         this.oaiHarvester = oaiHarvester;
@@ -45,6 +47,7 @@ public class CrawlStageHandler implements AuditStageHandler {
         this.findings = findings;
         this.evidenceItems = evidenceItems;
         this.evidenceLinks = evidenceLinks;
+        this.registration = registration;
         this.clock = clock;
     }
 
@@ -55,6 +58,15 @@ public class CrawlStageHandler implements AuditStageHandler {
 
     @Override
     public void run(Audit audit, Journal journal) {
+        // Every audit starts by re-resolving the scholarly sources: a source that was
+        // down (or hadn't indexed the journal yet) at registration time heals here —
+        // including a previously unknown homepage, which lets THIS crawl proceed.
+        // Best-effort: a refresh failure must never fail the audit.
+        try {
+            registration.refreshSourceIdentities(journal);
+        } catch (Exception e) {
+            log.warn("Source identity refresh failed for journal {}: {}", journal.getId(), e.getMessage());
+        }
         CrawlService.CrawlOutcome outcome = crawlService.run(audit, journal);
         if (!outcome.completed()) {
             return; // cancelled — status already set

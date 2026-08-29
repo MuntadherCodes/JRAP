@@ -51,7 +51,12 @@ export default function JournalDetail() {
       <p>
         <Link to="/journals">← {t('journals')}</Link>
       </p>
-      <h1>{j.title ?? j.issnL}</h1>
+      <h1 style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        {j.title ?? j.issnL}
+        <Link to={`/journals/${j.id}/dashboard`}>
+          <button className="secondary">{t('journalDashboard')}</button>
+        </Link>
+      </h1>
       <p style={{ color: 'var(--muted)' }}>
         {j.publisher} {j.country ? `· ${j.country}` : ''} {j.platform ? `· ${j.platform}` : ''}
       </p>

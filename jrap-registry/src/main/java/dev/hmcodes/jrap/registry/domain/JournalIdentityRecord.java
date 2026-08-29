@@ -97,6 +97,13 @@ public class JournalIdentityRecord implements Persistable<UUID> {
     public void setIssnL(String issnL) { this.issnL = issnL; }
     public void setExtra(String extra) { this.extra = extra; }
 
+    /** Audit-time re-resolution (ENRICH heal): replaces the availability facts in place. */
+    public void refresh(SourceAvailability availability, UUID apiRecordId, Instant retrievedAt) {
+        this.availability = availability;
+        this.apiRecordId = apiRecordId;
+        this.retrievedAt = retrievedAt;
+    }
+
     @Transient
     private boolean isNew = true;
 
