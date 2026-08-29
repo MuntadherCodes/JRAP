@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
 import { clearSession, session } from './api';
 import { applyDirection } from './i18n';
 import AcceptInvitation from './pages/AcceptInvitation';
@@ -29,15 +29,20 @@ export default function App() {
   return (
     <>
       <header className="topbar">
-        <strong>
-          {t('appName')} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>{t('tagline')}</span>
-        </strong>
-        <nav style={{ display: 'flex', gap: '0.6rem' }}>
+        <span className="brand">
+          <span className="logo">J</span>
+          <span>{t('appName')}</span>
+          <span className="tagline">{t('tagline')}</span>
+        </span>
+        <nav>
           {authed && (
-            <button className="secondary" onClick={() => navigate('/journals')}>
-              {t('journals')}
-            </button>
+            <>
+              <NavLink to="/" end>{t('dashboard')}</NavLink>
+              <NavLink to="/journals">{t('journals')}</NavLink>
+            </>
           )}
+        </nav>
+        <span className="actions">
           <button className="secondary" onClick={toggleLanguage}>
             {t('language')}
           </button>
@@ -52,7 +57,7 @@ export default function App() {
               {t('logout')}
             </button>
           )}
-        </nav>
+        </span>
       </header>
       <Routes>
         <Route path="/login" element={<Login />} />

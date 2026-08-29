@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { api, ReportDto } from '../api';
+import { Loading } from '../components/ui';
 
 const verdictColor: Record<string, string> = {
   READY: '#1b7f4d',
@@ -43,7 +44,7 @@ export default function ReportView() {
   if (!report) {
     return (
       <main className="content">
-        <p>{error || '…'}</p>
+        {error ? <p className="error">{error}</p> : <Loading />}
       </main>
     );
   }
@@ -88,6 +89,7 @@ export default function ReportView() {
       </div>
       {error && <p className="error">{error}</p>}
 
+      <div className="report-paper">
       {report.sections.map(section => (
         <section key={section.id}>
           <h2>{section.title}</h2>
@@ -103,8 +105,7 @@ export default function ReportView() {
             >
               <span dir="auto">{sentence.text}</span>
               {sentence.evidenceItemIds.length > 0 && (
-                <sup title={t('citations', { count: sentence.evidenceItemIds.length })}
-                     style={{ color: '#4650dd', marginInlineStart: 2 }}>
+                <sup className="cite" title={t('citations', { count: sentence.evidenceItemIds.length })}>
                   [{sentence.evidenceItemIds.length}]
                 </sup>
               )}
@@ -138,6 +139,7 @@ export default function ReportView() {
           ))}
         </section>
       ))}
+      </div>
 
       <h2>{t('roadmap')}</h2>
       <table>

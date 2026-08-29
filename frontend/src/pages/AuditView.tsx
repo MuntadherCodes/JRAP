@@ -2,16 +2,9 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AnalysisDto, api, AuditDto, AuditFindingDto, BoardMemberDto, ExtractedArticleDto, ReportSummaryDto, SkippedUrlDto, SnapshotDto } from '../api';
+import { Loading, OutcomeBadge, PipelineStepper, SeverityBadge, StatusBadge } from '../components/ui';
 
 const ACTIVE = ['PENDING', 'RUNNING'];
-
-const outcomeColor: Record<string, string> = {
-  PASS: '#1b7f4d',
-  PASS_WITH_CAVEATS: '#a06a00',
-  FAIL: '#b3261e',
-  UNCLEAR: '#6a6f85',
-};
-
 
 export default function AuditView() {
   const { t } = useTranslation();
@@ -56,7 +49,7 @@ export default function AuditView() {
   if (!audit) {
     return (
       <main className="content">
-        <p>…</p>
+        <Loading />
       </main>
     );
   }
@@ -71,12 +64,16 @@ export default function AuditView() {
       <p>
         <Link to={`/journals/${audit.journalId}`}>← {t('journals')}</Link>
       </p>
-      <h1>
-        {t('audit')} — {audit.status}
+      <h1 style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {t('audit')} <StatusBadge status={audit.status} />
       </h1>
-      <p style={{ color: 'var(--muted)' }}>
-        {t('stage')}: {audit.stage} · {t('pagesFetched')}: {audit.pagesFetched}/{audit.pageCap} ·{' '}
-        {t('pagesSkipped')}: {audit.pagesSkipped}
+      <PipelineStepper stage={audit.stage} terminal={!ACTIVE.includes(audit.status)} />
+      <p style={{ color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <span>{t('pagesFetched')}: {audit.pagesFetched}/{audit.pageCap}</span>
+        <span className="progress" style={{ flex: '0 1 240px' }}>
+          <div style={{ width: `${Math.min(100, (audit.pagesFetched / Math.max(1, audit.pageCap)) * 100)}%` }} />
+        </span>
+        <span>{t('pagesSkipped')}: {audit.pagesSkipped}</span>
       </p>
       {audit.error && <p className="error">{audit.error}</p>}
       {ACTIVE.includes(audit.status) && (
@@ -119,8 +116,8 @@ export default function AuditView() {
                   {reports.map(r => (
                     <tr key={r.id}>
                       <td>{r.version}</td>
-                      <td>{r.status}</td>
-                      <td>{r.verdict.replace('_', ' ')}</td>
+                      <td><StatusBadge status={r.status} /></td>
+                      <td><StatusBadge status={r.verdict === 'NOT_READY' ? 'REJECTED' : r.verdict === 'READY' ? 'CONFIRMED' : 'DRAFT'} /> {r.verdict.replace('_', ' ')}</td>
                       <td>
                         <Link to={`/reports/${r.id}`}>{t('openReport')}</Link>
                       </td>
@@ -145,7 +142,7 @@ export default function AuditView() {
                   {analysis.gateway.map((g) => (
                     <tr key={g.code}>
                       <td>{g.code}</td>
-                      <td style={{ color: outcomeColor[g.outcome], fontWeight: 600 }}>{g.outcome}</td>
+                      <td><OutcomeBadge outcome={g.outcome} /></td>
                       <td>{g.summary}</td>
                     </tr>
                   ))}
@@ -163,13 +160,11 @@ export default function AuditView() {
                         <strong>{s.score}</strong> / 5
                       </td>
                       <td style={{ width: '60%' }}>
-                        <div style={{ background: '#ececf2', borderRadius: 4, height: 10 }}>
+                        <div className="scorebar">
                           <div
                             style={{
                               width: `${(s.score / 5) * 100}%`,
-                              background: s.score >= 4 ? '#1b7f4d' : s.score >= 2 ? '#a06a00' : '#b3261e',
-                              height: 10,
-                              borderRadius: 4,
+                              background: s.score >= 4 ? 'var(--good)' : s.score >= 2 ? 'var(--warn)' : 'var(--danger)',
                             }}
                           />
                         </div>
@@ -186,16 +181,14 @@ export default function AuditView() {
                 {t('redFlags')} ({auditFindings.length})
               </h2>
               {auditFindings.map((f) => (
-                <div key={f.id} className="card" style={{ maxWidth: 'none', marginBottom: '0.8rem', padding: '1rem' }}>
-                  <strong>
-                    [{f.severity}] {f.code} — {f.title}
-                  </strong>
-                  {f.status === 'NEEDS_VERIFICATION' && (
-                    <span style={{ color: '#a06a00', marginInlineStart: '0.5rem' }}>
-                      ({t('needsVerification')})
-                    </span>
-                  )}
-                  <p style={{ margin: '0.4rem 0 0' }}>{f.description}</p>
+                <div key={f.id} className="card" style={{ padding: '0.9rem 1.1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <SeverityBadge severity={f.severity} />
+                    <code>{f.code}</code>
+                    <strong>{f.title}</strong>
+                    {f.status === 'NEEDS_VERIFICATION' && <StatusBadge status={f.status} />}
+                  </div>
+                  <p style={{ margin: '0.4rem 0 0', color: 'var(--text-2)' }}>{f.description}</p>
                 </div>
               ))}
             </>

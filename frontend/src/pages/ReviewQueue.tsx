@@ -2,22 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { api, GateDto, QueueItemDto, SnapshotTextDto } from '../api';
-
-const severityColor: Record<string, string> = {
-  CRITICAL: '#7a1010',
-  HIGH: '#b3261e',
-  MEDIUM: '#a06a00',
-  LOW: '#1b7f4d',
-  INFO: '#6a6f85',
-};
-
-const statusColor: Record<string, string> = {
-  AUTO: '#6a6f85',
-  NEEDS_VERIFICATION: '#a06a00',
-  NEEDS_REVIEW: '#a06a00',
-  CONFIRMED: '#1b7f4d',
-  REJECTED: '#b3261e',
-};
+import { SeverityBadge, StatusBadge } from '../components/ui';
 
 type PendingAction = 'reject' | 'exclude' | 'annotate' | 'severity' | null;
 
@@ -197,8 +182,12 @@ export default function ReviewQueue() {
           {findingCount > 0 && <> · {t('reviewedProgress', { done: decided, total: findingCount })}</>}
         </div>
       )}
-      <p className="secondary">{t('keyboardHint')}</p>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+      <p className="hint">
+        <kbd>↑</kbd>/<kbd>↓</kbd> {t('filterAll').toLowerCase()} · <kbd>c</kbd> {t('confirm').toLowerCase()} ·{' '}
+        <kbd>r</kbd> {t('reject').toLowerCase()} · <kbd>x</kbd> {t('exclude').toLowerCase()} ·{' '}
+        <kbd>a</kbd> {t('annotate').toLowerCase()}
+      </p>
+      <div className="segmented" style={{ marginBottom: 12 }}>
         {[
           ['all', t('filterAll')],
           ['open', t('filterFindings')],
@@ -207,7 +196,7 @@ export default function ReviewQueue() {
         ].map(([key, label]) => (
           <button
             key={key}
-            className={filter === key ? '' : 'secondary'}
+            className={filter === key ? 'active' : ''}
             onClick={() => {
               setFilter(key);
               setSelected(0);
@@ -227,33 +216,23 @@ export default function ReviewQueue() {
               <div
                 key={item.id}
                 data-row
-                className="card"
+                className={`card queue-item ${index === selected ? 'selected' : ''} ${
+                  item.status === 'CONFIRMED' || item.status === 'REJECTED' ? 'decided' : ''
+                }`}
                 onClick={() => setSelected(index)}
-                style={{
-                  cursor: 'pointer',
-                  padding: '8px 12px',
-                  marginBottom: 6,
-                  outline: index === selected ? '2px solid #4650dd' : 'none',
-                  opacity: item.status === 'CONFIRMED' || item.status === 'REJECTED' ? 0.6 : 1,
-                }}
+                style={{ padding: '10px 14px', marginBottom: 8 }}
               >
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  {item.severity && (
-                    <span style={{ color: severityColor[item.severity] ?? '#333', fontWeight: 600 }}>
-                      [{item.severity}]
-                    </span>
-                  )}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 2 }}>
+                  {item.severity && <SeverityBadge severity={item.severity} />}
                   {item.code && <code>{item.code}</code>}
-                  <span style={{ color: statusColor[item.status] ?? '#333', fontSize: 12 }}>
-                    {item.excluded ? 'EXCLUDED' : item.status}
-                  </span>
+                  <StatusBadge status={item.excluded ? 'EXCLUDED' : item.status} />
                   {item.kind !== 'FINDING' && (
-                    <span className="secondary" style={{ fontSize: 12 }}>
-                      {item.kind} {item.confidence != null && `· ${Math.round(item.confidence * 100)}%`}
+                    <span className="hint">
+                      {item.kind.replace('_', ' ')} {item.confidence != null && `· ${Math.round(item.confidence * 100)}%`}
                     </span>
                   )}
                 </div>
-                <div>{item.title}</div>
+                <div style={{ fontSize: '0.92rem' }}>{item.title}</div>
               </div>
             ))}
           </div>

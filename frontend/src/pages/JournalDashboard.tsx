@@ -2,13 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { api, JournalDashboardDto, session, UserDto } from '../api';
-
-const outcomeColor: Record<string, string> = {
-  PASS: '#1b7f4d',
-  PASS_WITH_CAVEATS: '#a06a00',
-  FAIL: '#b3261e',
-  UNCLEAR: '#6a6f85',
-};
+import { Empty, Loading, OutcomeBadge, StatusBadge } from '../components/ui';
 
 /** Tiny dependency-free bar chart. */
 function Bars({ data, color }: { data: Record<string, number>; color: string }) {
@@ -57,7 +51,7 @@ export default function JournalDashboard() {
   }, [load]);
 
   if (!dash) {
-    return <main className="content"><p>{error || '…'}</p></main>;
+    return <main className="content">{error ? <p className="error">{error}</p> : <Loading />}</main>;
   }
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -128,16 +122,15 @@ export default function JournalDashboard() {
       <h2>{t('gatewayChecks')}</h2>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {dash.latestGateway.map(g => (
-          <span key={g.code} className="card" title={g.summary}
-                style={{ padding: '6px 10px', color: outcomeColor[g.outcome] ?? '#333', fontWeight: 600 }}>
-            {g.code}: {g.outcome.replace(/_/g, ' ')}
+          <span key={g.code} title={g.summary} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <strong style={{ fontSize: '0.85rem' }}>{g.code}</strong> <OutcomeBadge outcome={g.outcome} />
           </span>
         ))}
       </div>
 
       <h2>{t('actionBoard')} ({dash.actions.filter(a => a.status !== 'DONE').length} {t('open')})</h2>
       {dash.actions.length === 0 ? (
-        <p className="secondary">{t('noActions')}</p>
+        <Empty>{t('noActions')}</Empty>
       ) : (
         <table>
           <thead>
@@ -179,7 +172,7 @@ export default function JournalDashboard() {
                            }))} />
                   )}
                 </td>
-                <td>{action.status}</td>
+                <td><StatusBadge status={action.status} /></td>
                 <td>
                   {!viewer && action.status !== 'DONE' && (
                     <>

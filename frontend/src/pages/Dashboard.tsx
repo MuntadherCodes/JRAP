@@ -2,9 +2,9 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { api, ApiKeyDto, PortfolioRowDto, session, UserDto, WebhookDto } from '../api';
+import { Badge, Empty, StatusBadge } from '../components/ui';
 
 const trendGlyph: Record<string, string> = { up: '▲', down: '▼', flat: '→', '—': '—' };
-const trendColor: Record<string, string> = { up: '#1b7f4d', down: '#b3261e', flat: '#6a6f85' };
 
 export default function Dashboard() {
   const { t } = useTranslation();
@@ -52,9 +52,23 @@ export default function Dashboard() {
   return (
     <main className="content">
       <h1>{t('dashboard')}</h1>
+      <div className="stats">
+        <div className="stat">
+          <div className="label">{t('journals')}</div>
+          <div className="value">{portfolio.length}</div>
+        </div>
+        <div className="stat">
+          <div className="label">{t('severeFindings')}</div>
+          <div className="value">{portfolio.reduce((n, r) => n + r.openSevereFindings, 0)}</div>
+        </div>
+        <div className="stat">
+          <div className="label">{t('openActionsCol')}</div>
+          <div className="value">{portfolio.reduce((n, r) => n + r.openActions, 0)}</div>
+        </div>
+      </div>
       <h2>{t('portfolio')}</h2>
       {portfolio.length === 0 ? (
-        <p style={{ color: 'var(--muted)' }}>{t('journalsPlaceholder')}</p>
+        <Empty>{t('journalsPlaceholder')}</Empty>
       ) : (
         <table>
           <thead>
@@ -75,7 +89,11 @@ export default function Dashboard() {
                 <td><Link to={`/journals/${row.journalId}`}>{row.title ?? row.journalId.slice(0, 8)}</Link></td>
                 <td>{row.lastAuditAt?.slice(0, 10) ?? '—'}</td>
                 <td>{row.meanScore ?? '—'}</td>
-                <td style={{ color: trendColor[row.trend] ?? '#333' }}>{trendGlyph[row.trend] ?? row.trend}</td>
+                <td>
+                  <Badge tone={row.trend === 'up' ? 'ok' : row.trend === 'down' ? 'bad' : 'info'}>
+                    {trendGlyph[row.trend] ?? '—'} {row.trend !== '—' ? row.trend : ''}
+                  </Badge>
+                </td>
                 <td>{row.gatewayFails}</td>
                 <td>{row.openSevereFindings}</td>
                 <td>{row.openActions}</td>
@@ -146,7 +164,7 @@ export default function Dashboard() {
                   <td>{k.name} <code className="secondary">{k.prefix}</code></td>
                   <td><code>{k.scopes}</code></td>
                   <td>{k.rateLimitPerMinute}/min</td>
-                  <td>{k.revokedAt ? t('revoked') : t('activeLabel')}</td>
+                  <td><StatusBadge status={k.revokedAt ? 'ARCHIVED' : 'ACTIVE'} /></td>
                   <td>
                     {!k.revokedAt && (
                       <button className="secondary" onClick={async () => {
