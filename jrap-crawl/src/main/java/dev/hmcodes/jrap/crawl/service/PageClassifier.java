@@ -26,12 +26,20 @@ public class PageClassifier {
      * Ordered keyword → type rules, most specific first: a slug like /about/editorialTeam
      * must classify as editorial-team, not about. NOTE: 'indexing'/'abstracting' — never a
      * bare 'index', which would misfire on every OJS /index.php/... path.
+     *
+     * <p>Matching is SEPARATOR-INSENSITIVE: both the keyword and the haystack are squashed
+     * to bare letters/digits before comparison, so "peer-review", "Peer Review", and
+     * "peer_review" all match one rule. Learned from a live site (WJCM) whose review-policy
+     * page had the slug "review-proccess" (misspelt) and the spaced title "Peer Review
+     * Process" — neither matched the old hyphen/concatenated patterns, producing a false
+     * "publish your peer-review policy" roadmap action. 'review-proc' deliberately stops
+     * before the ss so both "process" and the common "proccess" misspelling match.</p>
      */
     private static final java.util.List<Map.Entry<String, String>> KEYWORDS = java.util.List.of(
             Map.entry("peer-review", "peer-review-policy"),
-            Map.entry("peerreview", "peer-review-policy"),
-            Map.entry("review-process", "peer-review-policy"),
-            Map.entry("reviewprocess", "peer-review-policy"),
+            Map.entry("review-proc", "peer-review-policy"),   // process AND the misspelt proccess
+            Map.entry("review-policy", "peer-review-policy"),
+            Map.entry("refereeing", "peer-review-policy"),
             Map.entry("editorial", "editorial-team"),
             Map.entry("editors", "editorial-team"),
             Map.entry("board", "editorial-team"),
@@ -82,13 +90,21 @@ public class PageClassifier {
         if (path.isEmpty() || path.equals("/") || path.endsWith("/index")) {
             return "home";
         }
-        String haystack = path + " " + (pageTitle == null ? "" : pageTitle.toLowerCase(Locale.ROOT));
+        // Squashed separately so no keyword can form accidentally across the path/title seam.
+        String squashedPath = squash(path);
+        String squashedTitle = squash(pageTitle == null ? "" : pageTitle);
         for (Map.Entry<String, String> entry : KEYWORDS) {
-            if (haystack.contains(entry.getKey())) {
+            String keyword = squash(entry.getKey());
+            if (squashedPath.contains(keyword) || squashedTitle.contains(keyword)) {
                 return entry.getValue();
             }
         }
         return "other";
+    }
+
+    /** Lowercase and strip everything but letters/digits — separator-insensitive matching. */
+    private static String squash(String s) {
+        return s.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
     }
 
     private static String pathOf(String url) {
